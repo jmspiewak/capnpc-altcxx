@@ -29,10 +29,6 @@
 namespace capnp {
 namespace altcxx {
 
-template <bool b, typename T, typename F> struct Conditional_ {typedef T Type;};
-template <typename T, typename F> struct Conditional_<false, T, F> {typedef F Type;};
-template <bool b, typename T, typename F> using Conditional = typename Conditional_<b, T, F>::Type;
-
 template <typename T>
 struct StructStringHelper {
   static kj::StringTree stringify(typename T::Reader reader) {

@@ -566,6 +566,9 @@ private:
                                  toUpperCase(name), '>');
     }
 
+    kj::StringPtr prefix = "    ::capnp::altcxx::";
+    kj::StringPtr reader = " ::capnp::altcxx::Reader, ";
+    kj::StringPtr builder = " ::capnp::altcxx::Builder, ";
     kj::String propertyTail = kj::str(kj::mv(maybeInUnion), "> ", propertyName, ";\n");
 
     if (proto.isGroup()) {
@@ -580,10 +583,9 @@ private:
         kj::mv(unionDiscrim.builderIsDecl),
         kj::mv(unionDiscrim.isDefs),
 
-        kj::strTree("    ::capnp::altcxx::ConstGroupProperty<", titleCase, propertyTail),
+        kj::strTree(prefix, "GroupProperty<", reader, titleCase, ", void", propertyTail),
 
-        kj::strTree(
-          "    ::capnp::altcxx::GroupProperty<", titleCase,
+        kj::strTree(prefix, "GroupProperty<", builder, titleCase,
           ", ::capnp::altcxx::GroupInitializer<\n",
           KJ_MAP(slot, slots) {
             switch (sectionFor(slot.whichType)) {
@@ -602,8 +604,7 @@ private:
           kj::repeat(' ', 30), "::capnp::altcxx::NoOp>", kj::mv(propertyTail)),
 
         hasDiscriminantValue(proto) ? kj::strTree() :
-          kj::strTree("    ::capnp::altcxx::PipelineProperty<", titleCase, "> ",
-                      propertyName, ";\n"),
+          kj::strTree(prefix, "PipelineProperty<", titleCase, "> ", propertyName, ";\n"),
       };
     }
 
@@ -721,15 +722,15 @@ private:
     }
 
     if (kind == FieldKind::PRIMITIVE) {
-      kj::String property = kj::str("PrimitiveProperty<", offset, ", ", type,
-                                    kj::mv(propertyMaskParam), kj::mv(propertyTail));
+      kj::String property = kj::str(offset, ", ", type, kj::mv(propertyMaskParam),
+                                    kj::mv(propertyTail));
 
       return FieldText {
         kj::mv(unionDiscrim.readerIsDecl),
         kj::mv(unionDiscrim.builderIsDecl),
         kj::mv(unionDiscrim.isDefs),
-        kj::strTree("    ::capnp::altcxx::Const", property),
-        kj::strTree("    ::capnp::altcxx::", kj::mv(property))
+        kj::strTree(prefix, "PrimitiveProperty<", reader, property),
+        kj::strTree(prefix, "PrimitiveProperty<", builder, kj::mv(property))
       };
 
     } else if (kind == FieldKind::INTERFACE) {
@@ -738,14 +739,11 @@ private:
         kj::mv(unionDiscrim.builderIsDecl),
         kj::mv(unionDiscrim.isDefs),
 
-        kj::strTree("    ::capnp::altcxx::ConstPointerProperty<", offset, ", ",
-                    type, propertyTail),
-
-        kj::strTree("    ::capnp::altcxx::InterfaceProperty<", offset, ", ",
-                    type, kj::mv(propertyTail)),
+        kj::strTree(prefix, "InterfaceProperty<", reader, offset, ", ", type, propertyTail),
+        kj::strTree(prefix, "InterfaceProperty<", builder, offset, ", ", type, kj::mv(propertyTail)),
 
         kj::strTree(hasDiscriminantValue(proto) ? kj::strTree() : kj::strTree(
-          "    ::capnp::altcxx::PipelineProperty<", type,
+          prefix, "PipelineProperty<", type,
           ", ::capnp::altcxx::PipelineGetPointerAsCapOp<", offset, ">> ", propertyName, ";\n"))
       };
 
@@ -754,8 +752,8 @@ private:
         kj::mv(unionDiscrim.readerIsDecl),
         kj::mv(unionDiscrim.builderIsDecl),
         kj::mv(unionDiscrim.isDefs),
-        kj::strTree("    ::capnp::altcxx::ConstAnyPointerProperty<", offset, propertyTail),
-        kj::strTree("    ::capnp::altcxx::AnyPointerProperty<", offset, kj::mv(propertyTail))
+        kj::strTree(prefix, "AnyPointerProperty<", reader, offset, propertyTail),
+        kj::strTree(prefix, "AnyPointerProperty<", builder, offset, kj::mv(propertyTail))
       };
 
     } else {
@@ -770,26 +768,24 @@ private:
             kj::strTree(", ", defaultSize), '>');
       }
 
-      kj::String readerPropertyType;
-      kj::String builderPropertyType;
+      kj::StringPtr propertyType;
 
       switch (kind) {
         case FieldKind::STRUCT:
-          readerPropertyType  = kj::str("ConstPointerProperty");
-          builderPropertyType = kj::str("StructProperty");
+          propertyType = "PointerProperty";
           break;
 
         case FieldKind::BLOB:
-          readerPropertyType  = kj::str("ConstContainerProperty");
-          builderPropertyType = kj::str("ContainerProperty");
+          propertyType = "BlobProperty";
           break;
 
         case FieldKind::LIST:
-          readerPropertyType  = kj::str("ConstContainerProperty");
-          builderPropertyType = kj::str("ListProperty");
+          propertyType = "ListProperty";
+          type = kj::str(typeName(typeBody.getList().getElementType()));
           break;
 
         default:
+          KJ_UNREACHABLE
           break;
       }
 
@@ -798,14 +794,14 @@ private:
         kj::mv(unionDiscrim.builderIsDecl),
         kj::mv(unionDiscrim.isDefs),
 
-        kj::strTree("    ::capnp::altcxx::", kj::mv(readerPropertyType), '<', offset, ", ",
-                    type, propertyDefault, propertyTail),
+        kj::strTree(prefix, propertyType, '<', reader, offset, ", ", type, propertyDefault,
+                    propertyTail),
 
-        kj::strTree("    ::capnp::altcxx::", kj::mv(builderPropertyType), '<', offset, ", ",
-                    type, kj::mv(propertyDefault), kj::mv(propertyTail)),
+        kj::strTree(prefix, propertyType, '<', builder, offset, ", ", type,
+                    kj::mv(propertyDefault), kj::mv(propertyTail)),
 
         kj::strTree(kind == FieldKind::STRUCT && !hasDiscriminantValue(proto)
-                    ? kj::strTree("    ::capnp::altcxx::PipelineProperty<", type,
+                    ? kj::strTree(prefix, "PipelineProperty<", type,
                                   ", ::capnp::altcxx::PipelineGetPointerOp<", offset, ">> ",
                                   propertyName, ";\n")
                     : kj::strTree())
