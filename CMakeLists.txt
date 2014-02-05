@@ -27,3 +27,9 @@ add_custom_target(dummy-target SOURCES ${INCLUDES})
 
 install(TARGETS capnpc-altc++ RUNTIME DESTINATION bin)
 install(FILES ${INCLUDES} DESTINATION "include/capnp/altc++")
+
+# ========================================================================================
+
+set(CAPNP_ALTCXX_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+get_target_property(CAPNP_PLUGIN_ALTCXX capnpc-altc++ LOCATION)
+add_subdirectory(examples EXCLUDE_FROM_ALL)
