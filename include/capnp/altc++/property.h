@@ -24,43 +24,10 @@
 #ifndef CAPNP_ALTCXX_PROPERTY_H_
 #define CAPNP_ALTCXX_PROPERTY_H_
 
-#include "common.h"
+#include <capnp/generated-header-support.h>
 
 namespace capnp {
 namespace altcxx {
-
-// =======================================================================================
-// T::{Reader, Builder}, Struct{Reader, Builder}, Pointer{Reader, Builder} abstraction.
-
-struct Reader {
-  static constexpr bool isConst = true;
-  typedef _::StructReader Struct;
-  typedef _::PointerReader Pointer;
-
-  template <typename T>
-  using TypeFor = ReaderFor<T>;
-
-  template <typename T>
-  static Struct& asStruct(T* ptr) {
-    // ptr must point to an object which is in union with a PrivateReader
-    return *reinterpret_cast<Struct*>(ptr);
-  }
-};
-
-struct Builder {
-  static constexpr bool isConst = false;
-  typedef _::StructBuilder Struct;
-  typedef _::PointerBuilder Pointer;
-
-  template <typename T>
-  using TypeFor = BuilderFor<T>;
-
-  template <typename T>
-  static Struct& asStruct(T* ptr) {
-    // ptr must point to an object which is in union with a PrivateBuilder
-    return *reinterpret_cast<Struct*>(ptr);
-  }
-};
 
 // =======================================================================================
 // Union member trait.

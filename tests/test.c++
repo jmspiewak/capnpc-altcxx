@@ -102,17 +102,17 @@ TEST(Test, Unions) {
 
   EXPECT_EQ(TestUnion::Union0::U0F0S0, root.union0->which());
   EXPECT_EQ_CAST(VOID, root.union0->u0f0s0);
-  EXPECT_DEBUG_ANY_THROW(root.union0->u0f0s1);
+  EXPECT_DEBUG_ANY_THROW((bool)root.union0->u0f0s1);
 
   root.union0->u0f0s1 = true;
   EXPECT_EQ(TestUnion::Union0::U0F0S1, root.union0->which());
   EXPECT_TRUE(root.union0->u0f0s1);
-  EXPECT_DEBUG_ANY_THROW(root.union0->u0f0s0);
+  EXPECT_DEBUG_ANY_THROW((Void)root.union0->u0f0s0);
 
   root.union0->u0f0s8 = 123;
   EXPECT_EQ(TestUnion::Union0::U0F0S8, root.union0->which());
   EXPECT_EQ_CAST(123, root.union0->u0f0s8);
-  EXPECT_DEBUG_ANY_THROW(root.union0->u0f0s1);
+  EXPECT_DEBUG_ANY_THROW((bool)root.union0->u0f0s1);
 }
 
 TEST(Test, UnnamedUnion) {
@@ -125,16 +125,16 @@ TEST(Test, UnnamedUnion) {
   EXPECT_EQ(test::TestUnnamedUnion::BAR, root.asReader().which());
   EXPECT_EQ_CAST(321u, root.bar);
   EXPECT_EQ_CAST(321u, root.asReader().bar);
-  EXPECT_DEBUG_ANY_THROW(root.foo);
-  EXPECT_DEBUG_ANY_THROW(root.asReader().foo);
+  EXPECT_DEBUG_ANY_THROW((int)root.foo);
+  EXPECT_DEBUG_ANY_THROW((int)root.asReader().foo);
 
   root.foo = 123;
   EXPECT_EQ(test::TestUnnamedUnion::FOO, root.which());
   EXPECT_EQ(test::TestUnnamedUnion::FOO, root.asReader().which());
   EXPECT_EQ_CAST(123u, root.foo);
   EXPECT_EQ_CAST(123u, root.asReader().foo);
-  EXPECT_DEBUG_ANY_THROW(root.bar);
-  EXPECT_DEBUG_ANY_THROW(root.asReader().bar);
+  EXPECT_DEBUG_ANY_THROW((int)root.bar);
+  EXPECT_DEBUG_ANY_THROW((int)root.asReader().bar);
 }
 
 TEST(Test, Groups) {

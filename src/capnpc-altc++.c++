@@ -483,54 +483,10 @@ private:
 
   // -----------------------------------------------------------------
 
-  struct DiscriminantChecks {
-    kj::String has;
-    kj::String check;
-    kj::String set;
-    kj::StringTree readerIsDecl;
-    kj::StringTree builderIsDecl;
-    kj::StringTree isDefs;
-  };
-
-  DiscriminantChecks makeDiscriminantChecks(kj::StringPtr scope,
-                                            kj::StringPtr memberName,
-                                            StructSchema containingStruct) {
-    auto discrimOffset = containingStruct.getProto().getStruct().getDiscriminantOffset();
-
-    kj::String titleCase = toTitleCase(memberName);
-    kj::String upperCase = toUpperCase(memberName);
-
-    return DiscriminantChecks {
-        kj::str(
-            "  if (which() != ", scope, upperCase, ") return false;\n"),
-        kj::str(
-            "  KJ_IREQUIRE(which() == ", scope, upperCase, ",\n"
-            "              \"Must check which() before get()ing a union member.\");\n"),
-        kj::str(
-            "  _builder.setDataField<", scope, "Which>(\n"
-            "      ", discrimOffset, " * ::capnp::ELEMENTS, ",
-                      scope, upperCase, ");\n"),
-        kj::strTree("  inline bool is", titleCase, "() const;\n"),
-        kj::strTree("  inline bool is", titleCase, "();\n"),
-        kj::strTree(
-            "inline bool ", scope, "Reader::is", titleCase, "() const {\n"
-            "  return which() == ", scope, upperCase, ";\n"
-            "}\n"
-            "inline bool ", scope, "Builder::is", titleCase, "() {\n"
-            "  return which() == ", scope, upperCase, ";\n"
-            "}\n")
-    };
-  }
-
-  // -----------------------------------------------------------------
-
   struct FieldText {
-    kj::StringTree readerMethodDecls;
-    kj::StringTree builderMethodDecls;
-    kj::StringTree inlineMethodDefs;
-    kj::StringTree readerProperties;
-    kj::StringTree builderProperties;
-    kj::StringTree pipelineProperties;
+    kj::StringTree unionCheck;
+    kj::StringTree property;
+    kj::StringTree pipelineProperty;
   };
 
   enum class FieldKind {
@@ -542,13 +498,16 @@ private:
     ANY_POINTER
   };
 
-  FieldText makeFieldText(kj::StringPtr scope, StructSchema::Field field) {
+  FieldText makeFieldText(StructSchema::Field field) {
     auto proto = field.getProto();
+
     kj::StringPtr name = proto.getName();
     kj::StringPtr propertyName = name;
+    kj::String titleCase = toTitleCase(name);
+
     bool inUnion = hasDiscriminantValue(proto);
     kj::StringTree maybeInUnion;
-    DiscriminantChecks unionDiscrim;
+    kj::StringTree unionCheck;
 
     for (auto annotation: proto.getAnnotations()) {
       if (annotation.getId() == RENAME_ANNOTATION_ID) {
@@ -560,32 +519,29 @@ private:
     if (inUnion) {
       auto containingStruct = field.getContainingStruct();
       auto discrimOff = containingStruct.getProto().getStruct().getDiscriminantOffset();
+      kj::String upperCase = toUpperCase(name);
 
-      unionDiscrim = makeDiscriminantChecks(scope, name, containingStruct);
+      unionCheck = kj::strTree("  bool is", titleCase, "() { return which() == ",
+                               upperCase, "; }\n");
+
       maybeInUnion = kj::strTree(", ::capnp::altcxx::InUnion<", discrimOff, ", ",
-                                 toUpperCase(name), '>');
+                                 upperCase, '>');
     }
 
     kj::StringPtr prefix = "    ::capnp::altcxx::";
-    kj::StringPtr reader = " ::capnp::altcxx::Reader, ";
-    kj::StringPtr builder = " ::capnp::altcxx::Builder, ";
-    kj::String propertyTail = kj::str(kj::mv(maybeInUnion), "> ", propertyName, ";\n");
+    kj::StringTree propertyTail = kj::strTree(kj::mv(maybeInUnion), "> ", propertyName, ";\n");
 
     if (proto.isGroup()) {
-      kj::String titleCase = toTitleCase(name);
-      kj::String initOpPrefix = kj::str(kj::repeat(' ', 30), "::capnp::altcxx::");
+      constexpr int initOpIndent = 35;
+      kj::String initOpPrefix = kj::str(kj::repeat(' ', initOpIndent), "::capnp::altcxx::");
 
       auto slots = getSortedSlots(schemaLoader.get(field.getProto().getGroup().getTypeId())
                                   .asStruct());
 
       return FieldText {
-        kj::mv(unionDiscrim.readerIsDecl),
-        kj::mv(unionDiscrim.builderIsDecl),
-        kj::mv(unionDiscrim.isDefs),
+        kj::mv(unionCheck),
 
-        kj::strTree(prefix, "GroupProperty<", reader, titleCase, ", void", propertyTail),
-
-        kj::strTree(prefix, "GroupProperty<", builder, titleCase,
+        kj::strTree(prefix, "GroupProperty<PropImpl, ", titleCase,
           ", ::capnp::altcxx::GroupInitializer<\n",
           KJ_MAP(slot, slots) {
             switch (sectionFor(slot.whichType)) {
@@ -601,7 +557,7 @@ private:
             }
             KJ_UNREACHABLE;
           },
-          kj::repeat(' ', 30), "::capnp::altcxx::NoOp>", kj::mv(propertyTail)),
+          kj::repeat(' ', initOpIndent), "::capnp::altcxx::NoOp>", kj::mv(propertyTail)),
 
         hasDiscriminantValue(proto) ? kj::strTree() :
           kj::strTree(prefix, "PipelineProperty<", titleCase, "> ", propertyName, ";\n"),
@@ -611,9 +567,7 @@ private:
     auto slot = proto.getSlot();
 
     FieldKind kind = FieldKind::PRIMITIVE;
-    kj::String ownedType;
     kj::String type = typeName(slot.getType()).flatten();
-    kj::StringPtr setterDefault;  // only for void
     kj::String defaultMask;    // primitives only
     size_t defaultOffset = 0;    // pointers only: offset of the default value within the schema.
     size_t defaultSize = 0;      // blobs only: byte size of the default value.
@@ -623,7 +577,6 @@ private:
     switch (typeBody.which()) {
       case schema::Type::VOID:
         kind = FieldKind::PRIMITIVE;
-        setterDefault = " = ::capnp::VOID";
         break;
 
 #define HANDLE_PRIMITIVE(discrim, typeName, defaultName, suffix) \
@@ -722,25 +675,17 @@ private:
     }
 
     if (kind == FieldKind::PRIMITIVE) {
-      kj::String property = kj::str(offset, ", ", type, kj::mv(propertyMaskParam),
-                                    kj::mv(propertyTail));
-
       return FieldText {
-        kj::mv(unionDiscrim.readerIsDecl),
-        kj::mv(unionDiscrim.builderIsDecl),
-        kj::mv(unionDiscrim.isDefs),
-        kj::strTree(prefix, "PrimitiveProperty<", reader, property),
-        kj::strTree(prefix, "PrimitiveProperty<", builder, kj::mv(property))
+        kj::mv(unionCheck),
+        kj::strTree(prefix, "PrimitiveProperty<PropImpl, ", offset, ", ", type,
+                    kj::mv(propertyMaskParam), kj::mv(propertyTail))
       };
 
     } else if (kind == FieldKind::INTERFACE) {
       return FieldText {
-        kj::mv(unionDiscrim.readerIsDecl),
-        kj::mv(unionDiscrim.builderIsDecl),
-        kj::mv(unionDiscrim.isDefs),
-
-        kj::strTree(prefix, "InterfaceProperty<", reader, offset, ", ", type, propertyTail),
-        kj::strTree(prefix, "InterfaceProperty<", builder, offset, ", ", type, kj::mv(propertyTail)),
+        kj::mv(unionCheck),
+        kj::strTree(prefix, "InterfaceProperty<PropImpl, ", offset, ", ",
+                    type, kj::mv(propertyTail)),
 
         kj::strTree(hasDiscriminantValue(proto) ? kj::strTree() : kj::strTree(
           prefix, "PipelineProperty<", type,
@@ -749,11 +694,8 @@ private:
 
     } else if (kind == FieldKind::ANY_POINTER) {
       return FieldText {
-        kj::mv(unionDiscrim.readerIsDecl),
-        kj::mv(unionDiscrim.builderIsDecl),
-        kj::mv(unionDiscrim.isDefs),
-        kj::strTree(prefix, "AnyPointerProperty<", reader, offset, propertyTail),
-        kj::strTree(prefix, "AnyPointerProperty<", builder, offset, kj::mv(propertyTail))
+        kj::mv(unionCheck),
+        kj::strTree(prefix, "AnyPointerProperty<PropImpl, ", offset, kj::mv(propertyTail))
       };
 
     } else {
@@ -790,14 +732,9 @@ private:
       }
 
       return FieldText {
-        kj::mv(unionDiscrim.readerIsDecl),
-        kj::mv(unionDiscrim.builderIsDecl),
-        kj::mv(unionDiscrim.isDefs),
+        kj::mv(unionCheck),
 
-        kj::strTree(prefix, propertyType, '<', reader, offset, ", ", type, propertyDefault,
-                    propertyTail),
-
-        kj::strTree(prefix, propertyType, '<', builder, offset, ", ", type,
+        kj::strTree(prefix, propertyType, "<PropImpl, ", offset, ", ", type,
                     kj::mv(propertyDefault), kj::mv(propertyTail)),
 
         kj::strTree(kind == FieldKind::STRUCT && !hasDiscriminantValue(proto)
@@ -815,72 +752,80 @@ private:
     kj::StringTree outerTypeDecl;
     kj::StringTree outerTypeDef;
     kj::StringTree readerBuilderDefs;
-    kj::StringTree inlineMethodDefs;
   };
 
-  kj::StringTree makeReaderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType,
-                               bool isUnion, kj::Array<kj::StringTree>&& methodDecls,
-                               kj::Array<kj::StringTree>&& properties) {
+  kj::StringTree makeBaseDef(kj::StringPtr fullName, bool isUnion, uint discrimOffset,
+                             kj::Array<kj::StringTree>&& methods,
+                             kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
-        "class ", fullName, "::Reader {\n"
+        "template <template <typename> class Impl>\n"
+        "class ", fullName, "::Base {\n"
+        "  typedef typename Impl<Base>::PropertyImpl PropImpl;\n"
+        "\n"
         "public:\n"
-        "  typedef ", unqualifiedParentType, " Reads;\n"
+        "  Base(): _impl() {}\n"
+        "  Base(Impl<Base>& impl): _impl(impl) {}\n"
+        "  Base(const Impl<Base>& impl): _impl(impl) {}\n"
+        "  Base(Impl<Base>&& impl): _impl(::kj::mv(impl)) {}\n"
+        "  Base(Base& other): _impl(other._impl) {}\n"
+        "  template <typename = ::kj::EnableIf<PropImpl::isConst>>\n"
+        "  Base(const Base& other): _impl(other._impl) {}\n"
+        "  Base(Base&& other): _impl(::kj::mv(other._impl)) {}\n"
+        "  ~Base() { ::kj::dtor(_impl); }\n"
         "\n"
-        "  inline Reader(): _reader() {}\n"
-        "  inline explicit Reader(::capnp::_::StructReader base): _reader(base) {}\n"
-        "  inline Reader(const Reader& other): _reader(other._reader) {}\n"
-        "  inline Reader& operator = (const Reader& other) { _reader = other._reader; return *this; }\n"
+        "  Base& operator = (Base& other) { _impl = other._impl; return *this; }\n"
+        "  Base& operator = (const Base& other) { _impl = other._impl; return *this; }\n"
+        "  Base& operator = (Base&& other) { _impl = ::kj::mv(other._impl); return *this; }\n"
         "\n"
-        "  inline ::capnp::MessageSize totalSize() const {\n"
-        "    return _reader.totalSize().asPublic();\n"
+        "  ::capnp::MessageSize totalSize() const {\n"
+        "    return _reader().totalSize().asPublic();\n"
         "  }\n"
         "\n",
-        isUnion ? kj::strTree("  inline Which which() const;\n") : kj::strTree(),
-        kj::mv(methodDecls),
+        isUnion ? kj::strTree("  Which which() { return _impl.template getDataField<Which>(",
+                              discrimOffset, " * ::capnp::ELEMENTS); }\n") : kj::strTree(),
+        kj::mv(methods),
         "  union {\n",
         kj::mv(properties),
-        "    ::capnp::altcxx::PrivateReader<Reader> _reader;\n"
+        "    Impl<Base> _impl;\n"
         "  };\n"
-        "};\n"
         "\n"
-        "inline ::kj::StringTree KJ_STRINGIFY(", fullName, "::Reader reader) {\n"
-        "  return ::capnp::altcxx::StructStringHelper<", fullName, ">::stringify(reader);\n"
-        "}\n"
+        "protected:\n"
+        "  ::capnp::_::StructReader _reader() const { return _impl.asReader(); }\n"
+        "\n"
+        "  friend ::kj::StringTree KJ_STRINGIFY(Base base) {\n"
+        "    return ::capnp::_::structString<", fullName, ">(base._reader());\n"
+        "  }\n"
+        "};\n"
         "\n");
   }
 
-  kj::StringTree makeBuilderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType,
-                                bool isUnion, kj::Array<kj::StringTree>&& methodDecls,
-                                kj::Array<kj::StringTree>&& properties) {
+  kj::StringTree makeReaderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType) {
     return kj::strTree(
-        "class ", fullName, "::Builder {\n"
+        "class ", fullName, "::Reader: public ", unqualifiedParentType, "::Base< "
+        "::capnp::altcxx::PrivateReader> {\n"
+        "public:\n"
+        "  typedef ", unqualifiedParentType, " Reads;\n"
+        "\n"
+        "  Reader() = default;\n"
+        "  explicit Reader(::capnp::_::StructReader base): Base(base) {}\n"
+        "};\n"
+        "\n");
+  }
+
+  kj::StringTree makeBuilderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType) {
+    return kj::strTree(
+        "class ", fullName, "::Builder: public ", unqualifiedParentType, "::Base< "
+        "::capnp::altcxx::PrivateBuilder> {\n"
         "public:\n"
         "  typedef ", unqualifiedParentType, " Builds;\n"
         "\n"
         "  Builder() = delete;  // Deleted to discourage incorrect usage.\n"
         "                       // You can explicitly initialize to nullptr instead.\n"
-        "  inline Builder(decltype(nullptr)): _builder() {}\n"
-        "  inline Builder(Builder& other): _builder(other._builder) {}\n"
-        "  inline Builder(Builder&& other): _builder(other._builder) {}\n"
-        "  inline explicit Builder(::capnp::_::StructBuilder base): _builder(base) {}\n"
-        "  inline Builder& operator = (Builder& other) { _builder = other._builder; return *this; }\n"
-        "  inline Builder& operator = (Builder&& other) { _builder = other._builder; return *this; }\n"
-        "  inline operator Reader() const { return Reader(_builder.asReader()); }\n"
-        "  inline Reader asReader() const { return *this; }\n"
-        "\n"
-        "  inline ::capnp::MessageSize totalSize() const { return asReader().totalSize(); }\n"
-        "\n",
-        isUnion ? kj::strTree("  inline Which which();\n") : kj::strTree(),
-        kj::mv(methodDecls),
-        "  union {\n",
-        kj::mv(properties),
-        "    ::capnp::altcxx::PrivateBuilder<Builder> _builder;\n"
-        "  };\n"
+        "  Builder(decltype(nullptr)) {}\n"
+        "  explicit Builder(::capnp::_::StructBuilder base): Base(base) {}\n"
+        "  operator Reader() const { return Reader(_reader()); }\n"
+        "  Reader asReader() const { return *this; }\n"
         "};\n"
-        "\n"
-        "inline ::kj::StringTree KJ_STRINGIFY(", fullName, "::Builder builder) {\n"
-        "  return ::capnp::altcxx::StructStringHelper<", fullName, ">::stringify(builder);\n"
-        "}\n"
         "\n");
   }
 
@@ -910,8 +855,7 @@ private:
                             kj::Array<kj::StringTree> nestedTypeDecls) {
     auto proto = schema.getProto();
     auto fullName = kj::str(scope, name);
-    auto subScope = kj::str(fullName, "::");
-    auto fieldTexts = KJ_MAP(f, schema.getFields()) { return makeFieldText(subScope, f); };
+    auto fieldTexts = KJ_MAP(f, schema.getFields()) { return makeFieldText(f); };
 
     auto structNode = proto.getStruct();
     uint discrimOffset = structNode.getDiscriminantOffset();
@@ -924,9 +868,13 @@ private:
           "struct ", fullName, " {\n",
           "  ", name, "() = delete;\n"
           "\n"
+          "  template <template <typename> class Impl>\n"
+          "  class Base;\n"
+          "\n"
           "  class Reader;\n"
           "  class Builder;\n"
-          "  class Pipeline;\n",
+          "  class Pipeline;\n"
+          "\n",
           structNode.getDiscriminantCount() == 0 ? kj::strTree() : kj::strTree(
               "  enum Which: uint16_t {\n",
               KJ_MAP(f, structNode.getFields()) {
@@ -942,25 +890,13 @@ private:
           "\n"),
 
       kj::strTree(
-          makeReaderDef(fullName, name, structNode.getDiscriminantCount() != 0,
-                        KJ_MAP(f, fieldTexts) { return kj::mv(f.readerMethodDecls); },
-                        KJ_MAP(f, fieldTexts) { return kj::mv(f.readerProperties); }),
-          makeBuilderDef(fullName, name, structNode.getDiscriminantCount() != 0,
-                         KJ_MAP(f, fieldTexts) { return kj::mv(f.builderMethodDecls); },
-                         KJ_MAP(f, fieldTexts) { return kj::mv(f.builderProperties); }),
+          makeBaseDef(fullName, structNode.getDiscriminantCount() != 0, discrimOffset,
+                      KJ_MAP(f, fieldTexts) { return kj::mv(f.unionCheck); },
+                      KJ_MAP(f, fieldTexts) { return kj::mv(f.property); }),
+          makeReaderDef(fullName, name),
+          makeBuilderDef(fullName, name),
           makePipelineDef(fullName, name,
-                          KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineProperties); })),
-
-      kj::strTree(
-          structNode.getDiscriminantCount() == 0 ? kj::strTree() : kj::strTree(
-              "inline ", fullName, "::Which ", fullName, "::Reader::which() const {\n"
-              "  return _reader.getDataField<Which>(", discrimOffset, " * ::capnp::ELEMENTS);\n"
-              "}\n"
-              "inline ", fullName, "::Which ", fullName, "::Builder::which() {\n"
-              "  return _builder.getDataField<Which>(", discrimOffset, " * ::capnp::ELEMENTS);\n"
-              "}\n"
-              "\n"),
-          KJ_MAP(f, fieldTexts) { return kj::mv(f.inlineMethodDefs); })
+                          KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineProperty); }))
     };
   }
 
@@ -1467,7 +1403,7 @@ private:
           kj::mv(structText.outerTypeDecl),
           kj::mv(structText.outerTypeDef),
           kj::mv(structText.readerBuilderDefs),
-          kj::mv(structText.inlineMethodDefs),
+          kj::strTree(),
 
           kj::strTree(
               "CAPNP_DECLARE_STRUCT(\n"
@@ -1640,7 +1576,7 @@ private:
           "#ifndef CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n",
           "#define CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n"
           "\n"
-          "#include <capnp/altc++/property.h>\n",
+          "#include <capnp/altc++/generated-header-support.h>\n",
           hasInterfaces ? kj::strTree("#include <capnp/capability.h>\n") : kj::strTree(),
           "\n"
           "#if CAPNP_VERSION != ", CAPNP_VERSION, "\n"

@@ -21,28 +21,47 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef CAPNP_ALTCXX_COMMON_H
-#define CAPNP_ALTCXX_COMMON_H
+#ifndef CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
+#define CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
 
-#include <capnp/generated-header-support.h>
+#include "property.h"
 
 namespace capnp {
 namespace altcxx {
 
-template <typename T>
-struct StructStringHelper {
-  static kj::StringTree stringify(typename T::Reader reader) {
-    return structString(reader._reader, _::rawSchema<T>());
-  }
+struct ReaderPropertyImpl {
+  static constexpr bool isConst = true;
+  typedef _::StructReader Struct;
+  typedef _::PointerReader Pointer;
 
-  static kj::StringTree stringify(typename T::Builder builder) {
-    return structString(builder._builder.asReader(), _::rawSchema<T>());
+  template <typename T>
+  using TypeFor = ReaderFor<T>;
+
+  template <typename T>
+  static Struct& asStruct(T* ptr) {
+    return *reinterpret_cast<Struct*>(ptr);
+  }
+};
+
+struct BuilderPropertyImpl {
+  static constexpr bool isConst = false;
+  typedef _::StructBuilder Struct;
+  typedef _::PointerBuilder Pointer;
+
+  template <typename T>
+  using TypeFor = BuilderFor<T>;
+
+  template <typename T>
+  static Struct& asStruct(T* ptr) {
+    return *reinterpret_cast<Struct*>(ptr);
   }
 };
 
 template <typename Friend>
 struct PrivateReader: private _::StructReader {
   friend Friend;
+
+  typedef ReaderPropertyImpl PropertyImpl;
 
   template <typename T, Kind k>
   friend struct ::capnp::ToDynamic_;
@@ -52,24 +71,30 @@ struct PrivateReader: private _::StructReader {
   friend struct ::capnp::List;
   friend class ::capnp::MessageBuilder;
   friend class ::capnp::Orphanage;
-  friend class StructStringHelper<FromReader<Friend>>;
 
   PrivateReader() = default;
   PrivateReader(const StructReader& r): StructReader(r) {}
+
+private:
+  _::StructReader asReader() const { return *this; }
 };
 
 template <typename Friend>
 struct PrivateBuilder: private _::StructBuilder {
   friend Friend;
 
+  typedef BuilderPropertyImpl PropertyImpl;
+
   template <typename T, Kind k>
   friend struct ::capnp::ToDynamic_;
   friend class ::capnp::Orphanage;
-  friend class StructStringHelper<FromBuilder<Friend>>;
 
   PrivateBuilder() = default;
   PrivateBuilder(StructBuilder& b): StructBuilder(b) {}
   PrivateBuilder(StructBuilder&& b): StructBuilder(b) {}
+
+private:
+  _::StructReader asReader() const { return StructBuilder::asReader(); }
 };
 
 template <typename Friend>
@@ -86,4 +111,4 @@ struct PrivatePipeline: private AnyPointer::Pipeline {
 } // namespace altcxx
 } // namespace capnp
 
-#endif // CAPNP_ALTCXX_COMMON_H
+#endif // CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
