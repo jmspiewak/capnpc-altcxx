@@ -201,13 +201,15 @@ struct PipelineGetPointerAsCapOp {
 template <typename Impl, uint offset, typename T, typename SafeMask<T>::Type mask = 0,
           typename MaybeInUnion = NotInUnion>
 struct PrimitiveProperty {
+  KJ_DISALLOW_COPY(PrimitiveProperty);
+
   operator T () {
     MaybeInUnion::check(Impl::asStruct(this));
     return MaybeMasked<typename Impl::Struct, offset, T, mask>::get(Impl::asStruct(this));
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   T operator = (T val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     MaybeMasked<typename Impl::Struct, offset, T, mask>::set(Impl::asStruct(this), val);
     return val;
@@ -216,13 +218,15 @@ struct PrimitiveProperty {
 
 template <typename Impl, typename T, typename Initializer, typename MaybeInUnion = NotInUnion>
 struct GroupProperty {
+  KJ_DISALLOW_COPY(GroupProperty);
+
   typename Impl::template TypeFor<T> get() {
     MaybeInUnion::check(Impl::asStruct(this));
     return typename Impl::template TypeFor<T>(Impl::asStruct(this));
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   typename Impl::template TypeFor<T> init() {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     Initializer::init(Impl::asStruct(this));
     return typename Impl::template TypeFor<T>(Impl::asStruct(this));
@@ -235,6 +239,8 @@ struct GroupProperty {
 template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
           typename MaybeInUnion = NotInUnion>
 struct PointerProperty {
+  KJ_DISALLOW_COPY(PointerProperty);
+
   typename Impl::template TypeFor<T> get() {
     MaybeInUnion::check(Impl::asStruct(this));
     return MaybeDefault::template get<T, Impl>(pointer());
@@ -245,35 +251,33 @@ struct PointerProperty {
     return pointer().isNull();
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   void set(ReaderFor<T> val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     _::PointerHelpers<T>::set(pointer(), val);
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   void adopt(Orphan<T>&& val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     _::PointerHelpers<T>::adopt(pointer(), kj::mv(val));
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   Orphan<T> disown() {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::check(Impl::asStruct(this));
     return _::PointerHelpers<T>::disown(pointer());
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst && kind<T>() == Kind::STRUCT>>
   BuilderFor<T> init() {
-    static_assert(kind<T>() == Kind::STRUCT, "Only structs can be initialized with init()");
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     return _::PointerHelpers<T>::init(this->pointer());
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst && (kind<T>() == Kind::BLOB ||
+                                    kind<T>() == Kind::LIST)>>
   BuilderFor<T> init(size_t n) {
-    static_assert(kind<T>() == Kind::BLOB || kind<T>() == Kind::LIST,
-                  "Only blobs and lists can be initialized with init(size_t)");
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     return _::PointerHelpers<T>::init(this->pointer(), n);
   }
@@ -306,8 +310,8 @@ struct BlobProperty: PointerProperty<Impl, offset, T, MaybeDefault, MaybeInUnion
 template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
           typename MaybeInUnion = NotInUnion>
 struct ListProperty: PointerProperty<Impl, offset, List<T>, MaybeDefault, MaybeInUnion> {
+  template <typename = kj::EnableIf<!Impl::isConst>>
   void set(kj::ArrayPtr<const ReaderFor<T>> val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     _::PointerHelpers<List<T>>::set(this->pointer(), val);
   }
@@ -321,14 +325,14 @@ struct ListProperty: PointerProperty<Impl, offset, List<T>, MaybeDefault, MaybeI
 
 template <typename Impl, uint offset, typename T, typename MaybeInUnion = NotInUnion>
 struct InterfaceProperty: PointerProperty<Impl, offset, T, NoDefault, MaybeInUnion> {
+  template <typename = kj::EnableIf<!Impl::isConst>>
   void set(typename T::Client&& val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     _::PointerHelpers<T>::set(this->pointer(), kj::mv(val));
   }
 
+  template <typename = kj::EnableIf<!Impl::isConst>>
   void set(typename T::Client& val) {
-    static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     _::PointerHelpers<T>::set(this->pointer(), val);
   }

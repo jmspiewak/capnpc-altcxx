@@ -14,7 +14,7 @@ find_package(Capnp REQUIRED)
 include_directories(${CAPNP_INCLUDE_DIR})
 
 set(SOURCES
-    src/capnpc-altc++.c++
+  src/capnpc-altc++.c++
 )
 
 add_executable(capnpc-altc++ ${SOURCES})
@@ -22,8 +22,14 @@ target_link_libraries(capnpc-altc++ ${CAPNP_LIBRARIES})
 
 # ========================================================================================
 
+set(OTHER_FILES
+  cmake/FindCapnpAltC++.cmake
+  .gitignore
+  LICENSE
+)
+
 file(GLOB_RECURSE INCLUDES "include/*")
-add_custom_target(dummy-target SOURCES ${INCLUDES})
+add_custom_target(dummy-target SOURCES ${INCLUDES} ${OTHER_FILES})
 
 install(TARGETS capnpc-altc++ RUNTIME DESTINATION bin)
 install(FILES ${INCLUDES} DESTINATION "include/capnp/altc++")
