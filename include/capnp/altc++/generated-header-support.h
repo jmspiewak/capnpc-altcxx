@@ -108,6 +108,14 @@ struct PrivatePipeline: private AnyPointer::Pipeline {
   PrivatePipeline(AnyPointer::Pipeline&& p): AnyPointer::Pipeline(kj::mv(p)) {}
 };
 
+template <typename T>
+struct DummyPipeline {
+  typedef T Pipelines;
+
+  DummyPipeline(decltype(nullptr)) {}
+  explicit DummyPipeline(AnyPointer::Pipeline&&) {}
+};
+
 } // namespace altcxx
 } // namespace capnp
 

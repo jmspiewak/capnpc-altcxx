@@ -36,6 +36,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <set>
+#include <map>
 #include <kj/main.h>
 #include <algorithm>
 #include <sys/types.h>
@@ -155,6 +156,7 @@ private:
   kj::ProcessContext& context;
   SchemaLoader schemaLoader;
   std::unordered_set<uint64_t> usedImports;
+  std::map<uint64_t, bool> needsPipelineCache;
   bool hasInterfaces = false;
 
   kj::StringTree cppFullName(Schema schema) {
@@ -479,6 +481,46 @@ private:
     }
 
     return result.releaseAsArray();
+  }
+
+  // -----------------------------------------------------------------
+
+  bool needsPipeline(StructSchema schema) {
+    auto pair = needsPipelineCache.insert({schema.getProto().getId(), false});
+
+    if (!pair.second) {
+      return pair.first->second;
+    } else {
+      for (StructSchema::Field field: schema.getFields()) {
+        uint64_t typeId;
+
+        if (field.getProto().isGroup()) {
+          typeId = field.getProto().getGroup().getTypeId();
+        } else {
+          auto type = field.getProto().getSlot().getType();
+
+          switch (type.which()) {
+            case schema::Type::STRUCT:
+              typeId = type.getStruct().getTypeId();
+              break;
+
+            case schema::Type::INTERFACE:
+              pair.first->second = true;
+              return true;
+
+            default:
+              continue;
+          }
+        }
+
+        if (needsPipeline(schema.getDependency(typeId).asStruct())) {
+          pair.first->second = true;
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   // -----------------------------------------------------------------
@@ -855,6 +897,7 @@ private:
                             kj::Array<kj::StringTree> nestedTypeDecls) {
     auto proto = schema.getProto();
     auto fullName = kj::str(scope, name);
+    bool noPipeline = !needsPipeline(schema);
     auto fieldTexts = KJ_MAP(f, schema.getFields()) { return makeFieldText(f); };
 
     auto structNode = proto.getStruct();
@@ -873,7 +916,8 @@ private:
           "\n"
           "  class Reader;\n"
           "  class Builder;\n"
-          "  class Pipeline;\n"
+          "  ", noPipeline ? kj::strTree("typedef ::capnp::altcxx::DummyPipeline<", name, '>') :
+                             kj::strTree("class"), " Pipeline;\n"
           "\n",
           structNode.getDiscriminantCount() == 0 ? kj::strTree() : kj::strTree(
               "  enum Which: uint16_t {\n",
@@ -895,8 +939,8 @@ private:
                       KJ_MAP(f, fieldTexts) { return kj::mv(f.property); }),
           makeReaderDef(fullName, name),
           makeBuilderDef(fullName, name),
-          makePipelineDef(fullName, name,
-                          KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineProperty); }))
+          noPipeline ? kj::strTree() : makePipelineDef(fullName, name,
+              KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineProperty); }))
     };
   }
 
