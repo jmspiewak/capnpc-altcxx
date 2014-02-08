@@ -841,36 +841,6 @@ private:
         "\n");
   }
 
-  kj::StringTree makeReaderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType) {
-    return kj::strTree(
-        "class ", fullName, "::Reader: public ", unqualifiedParentType, "::Base< "
-        "::capnp::altcxx::PrivateReader> {\n"
-        "public:\n"
-        "  typedef ", unqualifiedParentType, " Reads;\n"
-        "\n"
-        "  Reader() = default;\n"
-        "  explicit Reader(::capnp::_::StructReader base): Base(base) {}\n"
-        "};\n"
-        "\n");
-  }
-
-  kj::StringTree makeBuilderDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType) {
-    return kj::strTree(
-        "class ", fullName, "::Builder: public ", unqualifiedParentType, "::Base< "
-        "::capnp::altcxx::PrivateBuilder> {\n"
-        "public:\n"
-        "  typedef ", unqualifiedParentType, " Builds;\n"
-        "\n"
-        "  Builder() = delete;  // Deleted to discourage incorrect usage.\n"
-        "                       // You can explicitly initialize to nullptr instead.\n"
-        "  Builder(decltype(nullptr)) {}\n"
-        "  explicit Builder(::capnp::_::StructBuilder base): Base(base) {}\n"
-        "  operator Reader() const { return Reader(_reader()); }\n"
-        "  Reader asReader() const { return *this; }\n"
-        "};\n"
-        "\n");
-  }
-
   kj::StringTree makePipelineDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType,
                                  kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
@@ -914,8 +884,8 @@ private:
           "  template <template <typename> class Impl>\n"
           "  class Base;\n"
           "\n"
-          "  class Reader;\n"
-          "  class Builder;\n"
+          "  typedef ::capnp::altcxx::Reader<", name, "> Reader;\n"
+          "  typedef ::capnp::altcxx::Builder<", name, "> Builder;\n"
           "  ", noPipeline ? kj::strTree("typedef ::capnp::altcxx::DummyPipeline<", name, '>') :
                              kj::strTree("class"), " Pipeline;\n"
           "\n",
@@ -937,8 +907,6 @@ private:
           makeBaseDef(fullName, structNode.getDiscriminantCount() != 0, discrimOffset,
                       KJ_MAP(f, fieldTexts) { return kj::mv(f.unionCheck); },
                       KJ_MAP(f, fieldTexts) { return kj::mv(f.property); }),
-          makeReaderDef(fullName, name),
-          makeBuilderDef(fullName, name),
           noPipeline ? kj::strTree() : makePipelineDef(fullName, name,
               KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineProperty); }))
     };

@@ -108,12 +108,35 @@ struct PrivatePipeline: private AnyPointer::Pipeline {
   PrivatePipeline(AnyPointer::Pipeline&& p): AnyPointer::Pipeline(kj::mv(p)) {}
 };
 
+// =======================================================================================
+
 template <typename T>
 struct DummyPipeline {
   typedef T Pipelines;
 
   DummyPipeline(decltype(nullptr)) {}
   explicit DummyPipeline(AnyPointer::Pipeline&&) {}
+};
+
+template <typename T>
+class Reader: public T::template Base<PrivateReader> {
+public:
+  typedef T Reads;
+
+  Reader() = default;
+  explicit Reader(::capnp::_::StructReader base): T::template Base<PrivateReader>(base) {}
+};
+
+template <typename T>
+class Builder: public T::template Base<PrivateBuilder> {
+public:
+  typedef T Builds;
+
+  Builder() = delete;
+  Builder(decltype(nullptr)) {}
+  explicit Builder(::capnp::_::StructBuilder base): T::template Base<PrivateBuilder>(base) {}
+  operator typename T::Reader() const { return typename T::Reader(this->_reader()); }
+  typename T::Reader asReader() const { return *this; }
 };
 
 } // namespace altcxx
