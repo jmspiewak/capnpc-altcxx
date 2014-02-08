@@ -263,14 +263,14 @@ struct PointerProperty {
     return _::PointerHelpers<T>::disown(pointer());
   }
 
-  typename T::Builder init() {
+  BuilderFor<T> init() {
     static_assert(kind<T>() == Kind::STRUCT, "Only structs can be initialized with init()");
     static_assert(!Impl::isConst, "Object cannot be modified.");
     MaybeInUnion::setDiscriminant(Impl::asStruct(this));
     return _::PointerHelpers<T>::init(this->pointer());
   }
 
-  typename T::Builder init(size_t n) {
+  BuilderFor<T> init(size_t n) {
     static_assert(kind<T>() == Kind::BLOB || kind<T>() == Kind::LIST,
                   "Only blobs and lists can be initialized with init(size_t)");
     static_assert(!Impl::isConst, "Object cannot be modified.");
