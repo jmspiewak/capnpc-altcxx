@@ -21,41 +21,33 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
-#define CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
+#ifndef CAPNP_ALTCXX_IMPL_H
+#define CAPNP_ALTCXX_IMPL_H
 
-#include "property.h"
+#include <capnp/generated-header-support.h>
 
 namespace capnp {
 namespace altcxx {
 
-struct ReaderPropertyImpl {
-  static constexpr bool isConst = true;
-  typedef _::StructReader Struct;
-  typedef _::PointerReader Pointer;
+template <bool c, typename S, typename P, template <typename> class Tf>
+struct BasicPropertyImpl {
+  static constexpr bool isConst = c;
+  typedef S Struct;
+  typedef P Pointer;
 
   template <typename T>
-  using TypeFor = ReaderFor<T>;
-
-  template <typename T>
-  static Struct& asStruct(T* ptr) {
-    return *reinterpret_cast<Struct*>(ptr);
-  }
-};
-
-struct BuilderPropertyImpl {
-  static constexpr bool isConst = false;
-  typedef _::StructBuilder Struct;
-  typedef _::PointerBuilder Pointer;
-
-  template <typename T>
-  using TypeFor = BuilderFor<T>;
+  using TypeFor = Tf<T>;
 
   template <typename T>
   static Struct& asStruct(T* ptr) {
     return *reinterpret_cast<Struct*>(ptr);
   }
 };
+
+using ReaderPropertyImpl = BasicPropertyImpl<1, _::StructReader, _::PointerReader, ReaderFor>;
+using BuilderPropertyImpl = BasicPropertyImpl<0, _::StructBuilder, _::PointerBuilder, BuilderFor>;
+
+// =======================================================================================
 
 template <typename Friend>
 struct PrivateReader: private _::StructReader {
@@ -110,6 +102,20 @@ struct PrivatePipeline: private AnyPointer::Pipeline {
 
 // =======================================================================================
 
+template <typename PropImpl, typename Friend>
+class BasicNestedImpl {
+  friend Friend;
+
+  typedef PropImpl PropertyImpl;
+
+  template <typename T>
+  T getDataField(ElementCount offset) {
+    return reinterpret_cast<typename PropertyImpl::Struct*>(this)->getDataField<T>(offset);
+  }
+};
+
+// =======================================================================================
+
 template <typename T>
 struct DummyPipeline {
   typedef T Pipelines;
@@ -142,4 +148,4 @@ public:
 } // namespace altcxx
 } // namespace capnp
 
-#endif // CAPNP_ALTCXX_GENERATED_HEADER_SUPPORT_H
+#endif // CAPNP_ALTCXX_IMPL_H

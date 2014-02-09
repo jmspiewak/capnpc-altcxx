@@ -46,7 +46,7 @@ void writeAddressBook(int fd) {
   alice.phones.init(1);
   alice.phones[0].number = "555-1212";
   alice.phones[0].type = Person::PhoneNumber::Type::MOBILE;
-  alice.employment->school = "MIT";
+  alice.employment.school = "MIT";
 
   Person::Builder bob = addressBook.people[1];
   bob.id = 456;
@@ -57,7 +57,7 @@ void writeAddressBook(int fd) {
   bobPhones[0].type = Person::PhoneNumber::Type::HOME;
   bobPhones[1].number = "555-7654";
   bobPhones[1].type = Person::PhoneNumber::Type::WORK;
-  bob.employment->unemployed = ::capnp::VOID;
+  bob.employment.unemployed = ::capnp::VOID;
 
   writePackedMessageToFd(fd, message);
 }
@@ -83,7 +83,7 @@ void printAddressBook(int fd) {
                 << phone.number->cStr() << std::endl;
     }
 
-    Person::Employment::Reader employment = *person.employment;
+    Person::Employment::Reader employment = person.employment;
     switch (employment.which()) {
       case Person::Employment::UNEMPLOYED:
         std::cout << "  unemployed" << std::endl;

@@ -24,7 +24,7 @@
 #ifndef CAPNP_ALTCXX_PROPERTY_H_
 #define CAPNP_ALTCXX_PROPERTY_H_
 
-#include <capnp/generated-header-support.h>
+#include "impl.h"
 
 namespace capnp {
 namespace altcxx {
@@ -184,7 +184,7 @@ struct PrimitiveProperty {
 };
 
 template <typename Impl, typename T, typename Initializer, typename MaybeInUnion = NotInUnion>
-struct GroupProperty {
+struct GroupProperty: public T::template Base<Apply<BasicNestedImpl, Impl>::template Result> {
   KJ_DISALLOW_COPY(GroupProperty);
 
   typename Impl::template TypeFor<T> get() {
@@ -199,8 +199,7 @@ struct GroupProperty {
     return typename Impl::template TypeFor<T>(Impl::asStruct(this));
   }
 
-  typename Impl::template TypeFor<T> operator * () { return get(); }
-  _::TemporaryPointer<typename Impl::template TypeFor<T>> operator -> () { return get(); }
+  operator typename Impl::template TypeFor<T> () { return get(); }
 };
 
 template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,

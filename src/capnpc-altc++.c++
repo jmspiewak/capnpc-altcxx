@@ -800,7 +800,7 @@ private:
                              kj::Array<kj::StringTree>&& methods,
                              kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
-        "template <template <typename> class Impl>\n"
+        "template <template <typename...> class Impl>\n"
         "class ", fullName, "::Base {\n"
         "  typedef typename Impl<Base>::PropertyImpl PropImpl;\n"
         "\n"
@@ -881,7 +881,7 @@ private:
           "struct ", fullName, " {\n",
           "  ", name, "() = delete;\n"
           "\n"
-          "  template <template <typename> class Impl>\n"
+          "  template <template <typename...> class Impl>\n"
           "  class Base;\n"
           "\n"
           "  typedef ::capnp::altcxx::Reader<", name, "> Reader;\n"
@@ -1588,7 +1588,7 @@ private:
           "#ifndef CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n",
           "#define CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n"
           "\n"
-          "#include <capnp/altc++/generated-header-support.h>\n",
+          "#include <capnp/altc++/property.h>\n",
           hasInterfaces ? kj::strTree("#include <capnp/capability.h>\n") : kj::strTree(),
           "\n"
           "#if CAPNP_VERSION != ", CAPNP_VERSION, "\n"

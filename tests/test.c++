@@ -100,19 +100,19 @@ TEST(Test, Unions) {
   MallocMessageBuilder builder;
   TestUnion::Builder root = builder.getRoot<TestUnion>();
 
-  EXPECT_EQ(TestUnion::Union0::U0F0S0, root.union0->which());
-  EXPECT_EQ_CAST(VOID, root.union0->u0f0s0);
-  EXPECT_DEBUG_ANY_THROW((bool)root.union0->u0f0s1);
+  EXPECT_EQ(TestUnion::Union0::U0F0S0, root.union0.which());
+  EXPECT_EQ_CAST(VOID, root.union0.u0f0s0);
+  EXPECT_DEBUG_ANY_THROW((bool)root.union0.u0f0s1);
 
-  root.union0->u0f0s1 = true;
-  EXPECT_EQ(TestUnion::Union0::U0F0S1, root.union0->which());
-  EXPECT_TRUE(root.union0->u0f0s1);
-  EXPECT_DEBUG_ANY_THROW((Void)root.union0->u0f0s0);
+  root.union0.u0f0s1 = true;
+  EXPECT_EQ(TestUnion::Union0::U0F0S1, root.union0.which());
+  EXPECT_TRUE(root.union0.u0f0s1);
+  EXPECT_DEBUG_ANY_THROW((Void)root.union0.u0f0s0);
 
-  root.union0->u0f0s8 = 123;
-  EXPECT_EQ(TestUnion::Union0::U0F0S8, root.union0->which());
-  EXPECT_EQ_CAST(123, root.union0->u0f0s8);
-  EXPECT_DEBUG_ANY_THROW((bool)root.union0->u0f0s1);
+  root.union0.u0f0s8 = 123;
+  EXPECT_EQ(TestUnion::Union0::U0F0S8, root.union0.which());
+  EXPECT_EQ_CAST(123, root.union0.u0f0s8);
+  EXPECT_DEBUG_ANY_THROW((bool)root.union0.u0f0s1);
 }
 
 TEST(Test, UnnamedUnion) {
@@ -142,7 +142,7 @@ TEST(Test, Groups) {
   auto root = builder.initRoot<test::TestGroups>();
 
   {
-    auto foo = root.groups->foo.init();
+    auto foo = root.groups.foo.init();
     foo.corge = 12345678;
     foo.grault = 123456789012345ll;
     foo.garply = "foobar";
@@ -153,7 +153,7 @@ TEST(Test, Groups) {
   }
 
   {
-    auto bar = root.groups->bar.init();
+    auto bar = root.groups.bar.init();
     bar.corge = 23456789;
     bar.grault = "barbaz";
     bar.garply = 234567890123456ll;
@@ -164,7 +164,7 @@ TEST(Test, Groups) {
   }
 
   {
-    auto baz = root.groups->baz.init();
+    auto baz = root.groups.baz.init();
     baz.corge = 34567890;
     baz.grault = "bazqux";
     baz.garply = "quxquux";
