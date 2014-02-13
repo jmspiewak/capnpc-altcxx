@@ -26,6 +26,20 @@
 
 #include <capnp/generated-header-support.h>
 
+#define ALTCXX_BASE_CTORS_DTOR_ASSIGNS \
+  Base(): _impl() {} \
+  Base(UnionMember& impl): _impl(impl) {} \
+  Base(const UnionMember& impl): _impl(impl) {} \
+  Base(UnionMember&& impl): _impl(::kj::mv(impl)) {} \
+  Base(Base& other): _impl(other._impl) {} \
+  template <typename = ::kj::EnableIf<Impl::CONST>> \
+  Base(const Base& other): _impl(other._impl) {} \
+  Base(Base&& other): _impl(::kj::mv(other._impl)) {} \
+  ~Base() { ::kj::dtor(_impl); } \
+  Base& operator = (Base& other) { _impl = other._impl; return *this; } \
+  Base& operator = (const Base& other) { _impl = other._impl; return *this; } \
+  Base& operator = (Base&& other) { _impl = ::kj::mv(other._impl); return *this; } \
+
 namespace capnp {
 namespace altcxx {
 
