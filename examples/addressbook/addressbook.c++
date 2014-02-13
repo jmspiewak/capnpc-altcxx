@@ -67,11 +67,11 @@ void printAddressBook(int fd) {
 
   AddressBook::Reader addressBook = message.getRoot<AddressBook>();
 
-  for (Person::Reader person : *addressBook.people) {
-    std::cout << person.name->cStr() << ": "
-              << person.email->cStr() << std::endl;
+  for (Person::Reader person : addressBook.people) {
+    std::cout << person.name.cStr() << ": "
+              << person.email.cStr() << std::endl;
 
-    for (Person::PhoneNumber::Reader phone: *person.phones) {
+    for (Person::PhoneNumber::Reader phone: person.phones) {
       const char* typeName = "UNKNOWN";
       switch (phone.type) {
         case Person::PhoneNumber::Type::MOBILE: typeName = "mobile"; break;
@@ -80,7 +80,7 @@ void printAddressBook(int fd) {
       }
 
       std::cout << "  " << typeName << " phone: "
-                << phone.number->cStr() << std::endl;
+                << phone.number.cStr() << std::endl;
     }
 
     Person::Employment::Reader employment = person.employment;
@@ -90,11 +90,11 @@ void printAddressBook(int fd) {
         break;
       case Person::Employment::EMPLOYER:
         std::cout << "  employer: "
-                  << employment.employer->cStr() << std::endl;
+                  << employment.employer.cStr() << std::endl;
         break;
       case Person::Employment::SCHOOL:
         std::cout << "  student at: "
-                  << employment.school->cStr() << std::endl;
+                  << employment.school.cStr() << std::endl;
         break;
       case Person::Employment::SELF_EMPLOYED:
         std::cout << "  self-employed" << std::endl;

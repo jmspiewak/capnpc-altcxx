@@ -134,10 +134,10 @@ void genericCheckTestMessage(Reader reader) {
   EXPECT_EQ_CAST(12345678901234567890ull, reader.uInt64Field);
   EXPECT_FLOAT_EQ(1234.5f, reader.float32Field);
   EXPECT_DOUBLE_EQ(-123e45, reader.float64Field);
-  EXPECT_EQ("foo", *reader.textField);
-  EXPECT_EQ(data("bar"), *reader.dataField);
+  EXPECT_EQ("foo", reader.textField.get());
+  EXPECT_EQ(data("bar"), reader.dataField.get());
   {
-    auto subReader = *reader.structField;
+    auto subReader = reader.structField.get();
     EXPECT_EQ_CAST(VOID, subReader.voidField);
     EXPECT_EQ_CAST(true, subReader.boolField);
     EXPECT_EQ_CAST(-12, subReader.int8Field);
@@ -150,53 +150,53 @@ void genericCheckTestMessage(Reader reader) {
     EXPECT_EQ_CAST(345678901234567890ull, subReader.uInt64Field);
     EXPECT_FLOAT_EQ(-1.25e-10f, subReader.float32Field);
     EXPECT_DOUBLE_EQ(345, subReader.float64Field);
-    EXPECT_EQ("baz", *subReader.textField);
-    EXPECT_EQ(data("qux"), *subReader.dataField);
+    EXPECT_EQ("baz", subReader.textField.get());
+    EXPECT_EQ(data("qux"), subReader.dataField.get());
     {
-      auto subSubReader = *subReader.structField;
-      EXPECT_EQ("nested", *subSubReader.textField);
-      EXPECT_EQ("really nested", *subSubReader.structField->textField);
+      auto subSubReader = subReader.structField.get();
+      EXPECT_EQ("nested", subSubReader.textField.get());
+      EXPECT_EQ("really nested", subSubReader.structField.textField.get());
     }
     EXPECT_EQ_CAST(TestEnum::BAZ, subReader.enumField);
 
-    checkList(*subReader.voidList, {VOID, VOID, VOID});
-    checkList(*subReader.boolList, {false, true, false, true, true});
-    checkList(*subReader.int8List, {12, -34, -0x80, 0x7f});
-    checkList(*subReader.int16List, {1234, -5678, -0x8000, 0x7fff});
+    checkList(subReader.voidList.get(), {VOID, VOID, VOID});
+    checkList(subReader.boolList.get(), {false, true, false, true, true});
+    checkList(subReader.int8List.get(), {12, -34, -0x80, 0x7f});
+    checkList(subReader.int16List.get(), {1234, -5678, -0x8000, 0x7fff});
     // gcc warns on -0x800... and the only work-around I could find was to do -0x7ff...-1.
-    checkList(*subReader.int32List, {12345678, -90123456, -0x7fffffff - 1, 0x7fffffff});
-    checkList(*subReader.int64List, {123456789012345ll, -678901234567890ll, -0x7fffffffffffffffll-1, 0x7fffffffffffffffll});
-    checkList(*subReader.uInt8List, {12u, 34u, 0u, 0xffu});
-    checkList(*subReader.uInt16List, {1234u, 5678u, 0u, 0xffffu});
-    checkList(*subReader.uInt32List, {12345678u, 90123456u, 0u, 0xffffffffu});
-    checkList(*subReader.uInt64List, {123456789012345ull, 678901234567890ull, 0ull, 0xffffffffffffffffull});
-    checkList(*subReader.float32List, {0.0f, 1234567.0f, 1e37f, -1e37f, 1e-37f, -1e-37f});
-    checkList(*subReader.float64List, {0.0, 123456789012345.0, 1e306, -1e306, 1e-306, -1e-306});
-    checkList(*subReader.textList, {"quux", "corge", "grault"});
-    checkList(*subReader.dataList, {data("garply"), data("waldo"), data("fred")});
+    checkList(subReader.int32List.get(), {12345678, -90123456, -0x7fffffff - 1, 0x7fffffff});
+    checkList(subReader.int64List.get(), {123456789012345ll, -678901234567890ll, -0x7fffffffffffffffll-1, 0x7fffffffffffffffll});
+    checkList(subReader.uInt8List.get(), {12u, 34u, 0u, 0xffu});
+    checkList(subReader.uInt16List.get(), {1234u, 5678u, 0u, 0xffffu});
+    checkList(subReader.uInt32List.get(), {12345678u, 90123456u, 0u, 0xffffffffu});
+    checkList(subReader.uInt64List.get(), {123456789012345ull, 678901234567890ull, 0ull, 0xffffffffffffffffull});
+    checkList(subReader.float32List.get(), {0.0f, 1234567.0f, 1e37f, -1e37f, 1e-37f, -1e-37f});
+    checkList(subReader.float64List.get(), {0.0, 123456789012345.0, 1e306, -1e306, 1e-306, -1e-306});
+    checkList(subReader.textList.get(), {"quux", "corge", "grault"});
+    checkList(subReader.dataList.get(), {data("garply"), data("waldo"), data("fred")});
     {
-      auto listReader = *subReader.structList;
+      auto listReader = subReader.structList.get();
       ASSERT_EQ(3u, listReader.size());
-      EXPECT_EQ("x structlist 1", *listReader[0].textField);
-      EXPECT_EQ("x structlist 2", *listReader[1].textField);
-      EXPECT_EQ("x structlist 3", *listReader[2].textField);
+      EXPECT_EQ("x structlist 1", listReader[0].textField.get());
+      EXPECT_EQ("x structlist 2", listReader[1].textField.get());
+      EXPECT_EQ("x structlist 3", listReader[2].textField.get());
     }
-    checkList(*subReader.enumList, {TestEnum::QUX, TestEnum::BAR, TestEnum::GRAULT});
+    checkList(subReader.enumList.get(), {TestEnum::QUX, TestEnum::BAR, TestEnum::GRAULT});
   }
   EXPECT_EQ_CAST(TestEnum::CORGE, reader.enumField);
 
-  EXPECT_EQ_CAST(6u, reader.voidList->size());
-  checkList(*reader.boolList, {true, false, false, true});
-  checkList(*reader.int8List, {111, -111});
-  checkList(*reader.int16List, {11111, -11111});
-  checkList(*reader.int32List, {111111111, -111111111});
-  checkList(*reader.int64List, {1111111111111111111ll, -1111111111111111111ll});
-  checkList(*reader.uInt8List, {111u, 222u});
-  checkList(*reader.uInt16List, {33333u, 44444u});
-  checkList(*reader.uInt32List, {3333333333u});
-  checkList(*reader.uInt64List, {11111111111111111111ull});
+  EXPECT_EQ_CAST(6u, reader.voidList.size());
+  checkList(reader.boolList.get(), {true, false, false, true});
+  checkList(reader.int8List.get(), {111, -111});
+  checkList(reader.int16List.get(), {11111, -11111});
+  checkList(reader.int32List.get(), {111111111, -111111111});
+  checkList(reader.int64List.get(), {1111111111111111111ll, -1111111111111111111ll});
+  checkList(reader.uInt8List.get(), {111u, 222u});
+  checkList(reader.uInt16List.get(), {33333u, 44444u});
+  checkList(reader.uInt32List.get(), {3333333333u});
+  checkList(reader.uInt64List.get(), {11111111111111111111ull});
   {
-    auto listReader = *reader.float32List;
+    auto listReader = reader.float32List.get();
     ASSERT_EQ(4u, listReader.size());
     EXPECT_EQ_CAST(5555.5f, listReader[0]);
     EXPECT_EQ_CAST(kj::inf(), listReader[1]);
@@ -204,23 +204,23 @@ void genericCheckTestMessage(Reader reader) {
     EXPECT_TRUE(isNaN(listReader[3]));
   }
   {
-    auto listReader = *reader.float64List;
+    auto listReader = reader.float64List.get();
     ASSERT_EQ(4u, listReader.size());
     EXPECT_EQ_CAST(7777.75, listReader[0]);
     EXPECT_EQ_CAST(kj::inf(), listReader[1]);
     EXPECT_EQ_CAST(-kj::inf(), listReader[2]);
     EXPECT_TRUE(isNaN(listReader[3]));
   }
-  checkList(*reader.textList, {"plugh", "xyzzy", "thud"});
-  checkList(*reader.dataList, {data("oops"), data("exhausted"), data("rfc3092")});
+  checkList(reader.textList.get(), {"plugh", "xyzzy", "thud"});
+  checkList(reader.dataList.get(), {data("oops"), data("exhausted"), data("rfc3092")});
   {
-    auto listReader = *reader.structList;
+    auto listReader = reader.structList.get();
     ASSERT_EQ(3u, listReader.size());
-    EXPECT_EQ("structlist 1", *listReader[0].textField);
-    EXPECT_EQ("structlist 2", *listReader[1].textField);
-    EXPECT_EQ("structlist 3", *listReader[2].textField);
+    EXPECT_EQ("structlist 1", listReader[0].textField.get());
+    EXPECT_EQ("structlist 2", listReader[1].textField.get());
+    EXPECT_EQ("structlist 3", listReader[2].textField.get());
   }
-  checkList(*reader.enumList, {TestEnum::FOO, TestEnum::GARPLY});
+  checkList(reader.enumList.get(), {TestEnum::FOO, TestEnum::GARPLY});
 }
 
 template <typename Reader>
@@ -237,10 +237,10 @@ void genericCheckTestMessageAllZero(Reader reader) {
   EXPECT_EQ_CAST(0u, reader.uInt64Field);
   EXPECT_FLOAT_EQ(0, reader.float32Field);
   EXPECT_DOUBLE_EQ(0, reader.float64Field);
-  EXPECT_EQ("", *reader.textField);
-  EXPECT_EQ(data(""), *reader.dataField);
+  EXPECT_EQ("", reader.textField.get());
+  EXPECT_EQ(data(""), reader.dataField.get());
   {
-    auto subReader = *reader.structField;
+    auto subReader = reader.structField.get();
     EXPECT_EQ_CAST(VOID, subReader.voidField);
     EXPECT_EQ_CAST(false, subReader.boolField);
     EXPECT_EQ_CAST(0, subReader.int8Field);
@@ -253,46 +253,46 @@ void genericCheckTestMessageAllZero(Reader reader) {
     EXPECT_EQ_CAST(0u, subReader.uInt64Field);
     EXPECT_FLOAT_EQ(0, subReader.float32Field);
     EXPECT_DOUBLE_EQ(0, subReader.float64Field);
-    EXPECT_EQ("", *subReader.textField);
-    EXPECT_EQ(data(""), *subReader.dataField);
+    EXPECT_EQ("", subReader.textField.get());
+    EXPECT_EQ(data(""), subReader.dataField.get());
     {
-      auto subSubReader = *subReader.structField;
-      EXPECT_EQ("", *subSubReader.textField);
-      EXPECT_EQ("", *subSubReader.structField->textField);
+      auto subSubReader = subReader.structField.get();
+      EXPECT_EQ("", subSubReader.textField.get());
+      EXPECT_EQ("", subSubReader.structField.textField.get());
     }
 
-    EXPECT_EQ_CAST(0u, subReader.voidList->size());
-    EXPECT_EQ_CAST(0u, subReader.boolList->size());
-    EXPECT_EQ_CAST(0u, subReader.int8List->size());
-    EXPECT_EQ_CAST(0u, subReader.int16List->size());
-    EXPECT_EQ_CAST(0u, subReader.int32List->size());
-    EXPECT_EQ_CAST(0u, subReader.int64List->size());
-    EXPECT_EQ_CAST(0u, subReader.uInt8List->size());
-    EXPECT_EQ_CAST(0u, subReader.uInt16List->size());
-    EXPECT_EQ_CAST(0u, subReader.uInt32List->size());
-    EXPECT_EQ_CAST(0u, subReader.uInt64List->size());
-    EXPECT_EQ_CAST(0u, subReader.float32List->size());
-    EXPECT_EQ_CAST(0u, subReader.float64List->size());
-    EXPECT_EQ_CAST(0u, subReader.textList->size());
-    EXPECT_EQ_CAST(0u, subReader.dataList->size());
-    EXPECT_EQ_CAST(0u, subReader.structList->size());
+    EXPECT_EQ_CAST(0u, subReader.voidList.size());
+    EXPECT_EQ_CAST(0u, subReader.boolList.size());
+    EXPECT_EQ_CAST(0u, subReader.int8List.size());
+    EXPECT_EQ_CAST(0u, subReader.int16List.size());
+    EXPECT_EQ_CAST(0u, subReader.int32List.size());
+    EXPECT_EQ_CAST(0u, subReader.int64List.size());
+    EXPECT_EQ_CAST(0u, subReader.uInt8List.size());
+    EXPECT_EQ_CAST(0u, subReader.uInt16List.size());
+    EXPECT_EQ_CAST(0u, subReader.uInt32List.size());
+    EXPECT_EQ_CAST(0u, subReader.uInt64List.size());
+    EXPECT_EQ_CAST(0u, subReader.float32List.size());
+    EXPECT_EQ_CAST(0u, subReader.float64List.size());
+    EXPECT_EQ_CAST(0u, subReader.textList.size());
+    EXPECT_EQ_CAST(0u, subReader.dataList.size());
+    EXPECT_EQ_CAST(0u, subReader.structList.size());
   }
 
-  EXPECT_EQ_CAST(0u, reader.voidList->size());
-  EXPECT_EQ_CAST(0u, reader.boolList->size());
-  EXPECT_EQ_CAST(0u, reader.int8List->size());
-  EXPECT_EQ_CAST(0u, reader.int16List->size());
-  EXPECT_EQ_CAST(0u, reader.int32List->size());
-  EXPECT_EQ_CAST(0u, reader.int64List->size());
-  EXPECT_EQ_CAST(0u, reader.uInt8List->size());
-  EXPECT_EQ_CAST(0u, reader.uInt16List->size());
-  EXPECT_EQ_CAST(0u, reader.uInt32List->size());
-  EXPECT_EQ_CAST(0u, reader.uInt64List->size());
-  EXPECT_EQ_CAST(0u, reader.float32List->size());
-  EXPECT_EQ_CAST(0u, reader.float64List->size());
-  EXPECT_EQ_CAST(0u, reader.textList->size());
-  EXPECT_EQ_CAST(0u, reader.dataList->size());
-  EXPECT_EQ_CAST(0u, reader.structList->size());
+  EXPECT_EQ_CAST(0u, reader.voidList.size());
+  EXPECT_EQ_CAST(0u, reader.boolList.size());
+  EXPECT_EQ_CAST(0u, reader.int8List.size());
+  EXPECT_EQ_CAST(0u, reader.int16List.size());
+  EXPECT_EQ_CAST(0u, reader.int32List.size());
+  EXPECT_EQ_CAST(0u, reader.int64List.size());
+  EXPECT_EQ_CAST(0u, reader.uInt8List.size());
+  EXPECT_EQ_CAST(0u, reader.uInt16List.size());
+  EXPECT_EQ_CAST(0u, reader.uInt32List.size());
+  EXPECT_EQ_CAST(0u, reader.uInt64List.size());
+  EXPECT_EQ_CAST(0u, reader.float32List.size());
+  EXPECT_EQ_CAST(0u, reader.float64List.size());
+  EXPECT_EQ_CAST(0u, reader.textList.size());
+  EXPECT_EQ_CAST(0u, reader.dataList.size());
+  EXPECT_EQ_CAST(0u, reader.structList.size());
 }
 
 template <typename Builder>
@@ -350,15 +350,15 @@ void genericInitListDefaults(Builder builder) {
 
 template <typename Reader>
 void genericCheckListDefaults(Reader reader) {
-  auto lists = *reader.lists;
+  auto lists = reader.lists.get();
 
-  ASSERT_EQ(2u, lists.list0->size());
-  ASSERT_EQ(4u, lists.list1->size());
-  ASSERT_EQ(2u, lists.list8->size());
-  ASSERT_EQ(2u, lists.list16->size());
-  ASSERT_EQ(2u, lists.list32->size());
-  ASSERT_EQ(2u, lists.list64->size());
-  ASSERT_EQ(2u, lists.listP->size());
+  ASSERT_EQ(2u, lists.list0.size());
+  ASSERT_EQ(4u, lists.list1.size());
+  ASSERT_EQ(2u, lists.list8.size());
+  ASSERT_EQ(2u, lists.list16.size());
+  ASSERT_EQ(2u, lists.list32.size());
+  ASSERT_EQ(2u, lists.list64.size());
+  ASSERT_EQ(2u, lists.listP.size());
 
   EXPECT_EQ_CAST(VOID, lists.list0[0].f);
   EXPECT_EQ_CAST(VOID, lists.list0[1].f);
@@ -374,11 +374,11 @@ void genericCheckListDefaults(Reader reader) {
   EXPECT_EQ_CAST(234567890u, lists.list32[1].f);
   EXPECT_EQ_CAST(1234567890123456u, lists.list64[0].f);
   EXPECT_EQ_CAST(2345678901234567u, lists.list64[1].f);
-  EXPECT_EQ("foo", *lists.listP[0].f);
-  EXPECT_EQ("bar", *lists.listP[1].f);
+  EXPECT_EQ("foo", lists.listP[0].f.get());
+  EXPECT_EQ("bar", lists.listP[1].f.get());
 
   {
-    auto l = *lists.int32ListList;
+    auto l = lists.int32ListList.get();
     ASSERT_EQ(3u, l.size());
     checkList(l[0], {1, 2, 3});
     checkList(l[1], {4, 5});
@@ -386,7 +386,7 @@ void genericCheckListDefaults(Reader reader) {
   }
 
   {
-    auto l = *lists.textListList;
+    auto l = lists.textListList.get();
     ASSERT_EQ(3u, l.size());
     checkList(l[0], {"foo", "bar"});
     checkList(l[1], {"baz"});
@@ -394,7 +394,7 @@ void genericCheckListDefaults(Reader reader) {
   }
 
   {
-    auto l = *lists.structListList;
+    auto l = lists.structListList.get();
     ASSERT_EQ(2u, l.size());
     auto e = l[0];
     ASSERT_EQ(2u, e.size());
@@ -445,7 +445,7 @@ kj::Promise<void> TestInterfaceImpl::foo(FooContext context) {
 kj::Promise<void> TestInterfaceImpl::baz(BazContext context) {
   ++callCount;
   auto params = context.getParams();
-  checkTestMessage(*params.s);
+  checkTestMessage(params.s);
   context.releaseParams();
   EXPECT_ANY_THROW(context.getParams());
 
@@ -490,7 +490,7 @@ kj::Promise<void> TestPipelineImpl::getCap(GetCapContext context) {
 
   return request.send().then(
       [this,context](Response<test::TestInterface::FooResults>&& response) mutable {
-        EXPECT_EQ("foo", *response.x);
+        EXPECT_EQ("foo", response.x.get());
 
         auto result = context.getResults();
         result.s = "bar";

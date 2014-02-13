@@ -21,11 +21,15 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef CAPNP_ALTCXX_COMMON_H
-#define CAPNP_ALTCXX_COMMON_H
+#ifndef CAPNP_ALTCXX_COMMON_H_
+#define CAPNP_ALTCXX_COMMON_H_
 
 namespace capnp {
 namespace altcxx {
+
+template <bool b, typename T, typename F> struct Conditional_ {typedef T Type;};
+template <typename T, typename F> struct Conditional_<false, T, F> {typedef F Type;};
+template <bool b, typename T, typename F> using Conditional = typename Conditional_<b, T, F>::Type;
 
 template <template <typename...> class Template, typename... Args>
 struct Apply {
@@ -33,7 +37,12 @@ struct Apply {
   using Result = Template<Args..., FreeArgs...>;
 };
 
+template <typename T, T V>
+struct Constant {
+  static constexpr T VALUE = V;
+};
+
 } // namespace altcxx
 } // namespace capnp
 
-#endif // CAPNP_ALTCXX_COMMON_H
+#endif // CAPNP_ALTCXX_COMMON_H_

@@ -21,76 +21,134 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#ifndef CAPNP_ALTCXX_IMPL_H
-#define CAPNP_ALTCXX_IMPL_H
+#ifndef CAPNP_ALTCXX_IMPL_H_
+#define CAPNP_ALTCXX_IMPL_H_
 
 #include <capnp/generated-header-support.h>
 
 namespace capnp {
 namespace altcxx {
 
-template <bool c, typename S, typename P, template <typename> class Tf>
-struct BasicPropertyImpl {
-  static constexpr bool isConst = c;
-  typedef S Struct;
-  typedef P Pointer;
+struct ReaderHelper {
+  static constexpr bool CONST = true;
+  typedef _::StructReader Struct;
+  typedef _::PointerReader Pointer;
 
   template <typename T>
-  using TypeFor = Tf<T>;
+  using TypeFor = ReaderFor<T>;
 
   template <typename T>
-  static Struct& asStruct(T* ptr) {
-    return *reinterpret_cast<Struct*>(ptr);
+  static Struct getStruct(Pointer ptr, const word* def) {
+    return ptr.getStruct(def);
+  }
+
+  static _::StructReader asReader(Struct s) {
+    return s;
   }
 };
 
-using ReaderPropertyImpl = BasicPropertyImpl<1, _::StructReader, _::PointerReader, ReaderFor>;
-using BuilderPropertyImpl = BasicPropertyImpl<0, _::StructBuilder, _::PointerBuilder, BuilderFor>;
+struct BuilderHelper {
+  static constexpr bool CONST = false;
+  typedef _::StructBuilder Struct;
+  typedef _::PointerBuilder Pointer;
+
+  template <typename T>
+  using TypeFor = BuilderFor<T>;
+
+  template <typename T>
+  static Struct getStruct(Pointer ptr, const word* def) {
+    return ptr.getStruct(_::structSize<T>(), def);
+  }
+
+  static _::StructReader asReader(Struct s) {
+    return s.asReader();
+  }
+};
+
+template <typename HelperT>
+struct RootTransorm {
+  typedef HelperT Helper;
+  static constexpr int DEPTH = 0;
+
+  static typename Helper::Struct transform(void* ptr) {
+    return *reinterpret_cast<typename Helper::Struct*>(ptr);
+  }
+};
+
+// =======================================================================================
+
+template <typename Transform>
+struct BasicImpl: public Transform::Helper {
+  typedef typename Transform::Helper Helper;
+  static constexpr int DEPTH = Transform::DEPTH;
+
+  template <template <typename...> class NewTransform>
+  using Push = BasicImpl<NewTransform<Transform> >;
+
+  template <typename Friend>
+  class UnionMember {
+    friend Friend;
+
+    template <typename T>
+    T getDataField(ElementCount offset) {
+      return reinterpret_cast<typename Helper::Struct*>(this)->getDataField<T>(offset);
+    }
+
+    _::StructReader asReader() {
+      return Helper::asReader(*reinterpret_cast<typename Helper::Struct*>(this));
+    }
+  };
+
+  template <typename T>
+  static typename Helper::Struct asStruct(T* ptr) {
+    return Transform::transform(reinterpret_cast<void*>(ptr));
+  }
+};
+
+struct ReaderImpl: public BasicImpl<RootTransorm<ReaderHelper> > {
+  template <typename Friend>
+  struct UnionMember: private _::StructReader {
+    friend Friend;
+
+    template <typename T, Kind k>
+    friend struct ::capnp::ToDynamic_;
+    template <typename T, Kind k>
+    friend struct ::capnp::_::PointerHelpers;
+    template <typename T, Kind k>
+    friend struct ::capnp::List;
+    friend class ::capnp::MessageBuilder;
+    friend class ::capnp::Orphanage;
+
+    UnionMember() = default;
+    UnionMember(const StructReader& r): StructReader(r) {}
+
+  private:
+    _::StructReader asReader() const { return *this; }
+  };
+};
+
+struct BuilderImpl: public BasicImpl<RootTransorm<BuilderHelper> > {
+  template <typename Friend>
+  struct UnionMember: private _::StructBuilder {
+    friend Friend;
+
+    template <typename T, Kind k>
+    friend struct ::capnp::ToDynamic_;
+    friend class ::capnp::Orphanage;
+
+    UnionMember() = default;
+    UnionMember(StructBuilder& b): StructBuilder(b) {}
+    UnionMember(StructBuilder&& b): StructBuilder(b) {}
+
+  private:
+    _::StructReader asReader() const { return StructBuilder::asReader(); }
+  };
+};
 
 // =======================================================================================
 
 template <typename Friend>
-struct PrivateReader: private _::StructReader {
-  friend Friend;
-
-  typedef ReaderPropertyImpl PropertyImpl;
-
-  template <typename T, Kind k>
-  friend struct ::capnp::ToDynamic_;
-  template <typename T, Kind k>
-  friend struct ::capnp::_::PointerHelpers;
-  template <typename T, Kind k>
-  friend struct ::capnp::List;
-  friend class ::capnp::MessageBuilder;
-  friend class ::capnp::Orphanage;
-
-  PrivateReader() = default;
-  PrivateReader(const StructReader& r): StructReader(r) {}
-
-private:
-  _::StructReader asReader() const { return *this; }
-};
-
-template <typename Friend>
-struct PrivateBuilder: private _::StructBuilder {
-  friend Friend;
-
-  typedef BuilderPropertyImpl PropertyImpl;
-
-  template <typename T, Kind k>
-  friend struct ::capnp::ToDynamic_;
-  friend class ::capnp::Orphanage;
-
-  PrivateBuilder() = default;
-  PrivateBuilder(StructBuilder& b): StructBuilder(b) {}
-  PrivateBuilder(StructBuilder&& b): StructBuilder(b) {}
-
-private:
-  _::StructReader asReader() const { return StructBuilder::asReader(); }
-};
-
-template <typename Friend>
-struct PrivatePipeline: private AnyPointer::Pipeline {
+class PrivatePipeline: private AnyPointer::Pipeline {
   friend Friend;
 
   template <typename T, Kind k>
@@ -100,22 +158,6 @@ struct PrivatePipeline: private AnyPointer::Pipeline {
   PrivatePipeline(AnyPointer::Pipeline&& p): AnyPointer::Pipeline(kj::mv(p)) {}
 };
 
-// =======================================================================================
-
-template <typename PropImpl, typename Friend>
-class BasicNestedImpl {
-  friend Friend;
-
-  typedef PropImpl PropertyImpl;
-
-  template <typename T>
-  T getDataField(ElementCount offset) {
-    return reinterpret_cast<typename PropertyImpl::Struct*>(this)->getDataField<T>(offset);
-  }
-};
-
-// =======================================================================================
-
 template <typename T>
 struct DummyPipeline {
   typedef T Pipelines;
@@ -124,23 +166,25 @@ struct DummyPipeline {
   explicit DummyPipeline(AnyPointer::Pipeline&&) {}
 };
 
+// =======================================================================================
+
 template <typename T>
-class Reader: public T::template Base<PrivateReader> {
+class Reader: public T::template Base<ReaderImpl> {
 public:
   typedef T Reads;
 
   Reader() = default;
-  explicit Reader(::capnp::_::StructReader base): T::template Base<PrivateReader>(base) {}
+  explicit Reader(::capnp::_::StructReader base): T::template Base<ReaderImpl>(base) {}
 };
 
 template <typename T>
-class Builder: public T::template Base<PrivateBuilder> {
+class Builder: public T::template Base<BuilderImpl> {
 public:
   typedef T Builds;
 
   Builder() = delete;
   Builder(decltype(nullptr)) {}
-  explicit Builder(::capnp::_::StructBuilder base): T::template Base<PrivateBuilder>(base) {}
+  explicit Builder(::capnp::_::StructBuilder base): T::template Base<BuilderImpl>(base) {}
   operator typename T::Reader() const { return typename T::Reader(this->_reader()); }
   typename T::Reader asReader() const { return *this; }
 };
@@ -148,4 +192,4 @@ public:
 } // namespace altcxx
 } // namespace capnp
 
-#endif // CAPNP_ALTCXX_IMPL_H
+#endif // CAPNP_ALTCXX_IMPL_H_

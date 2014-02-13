@@ -583,7 +583,7 @@ private:
       return FieldText {
         kj::mv(unionCheck),
 
-        kj::strTree(prefix, "GroupProperty<PropImpl, ", titleCase,
+        kj::strTree(prefix, "GroupProperty<Impl, ", titleCase,
           ", ::capnp::altcxx::GroupInitializer<\n",
           KJ_MAP(slot, slots) {
             switch (sectionFor(slot.whichType)) {
@@ -719,14 +719,14 @@ private:
     if (kind == FieldKind::PRIMITIVE) {
       return FieldText {
         kj::mv(unionCheck),
-        kj::strTree(prefix, "PrimitiveProperty<PropImpl, ", offset, ", ", type,
+        kj::strTree(prefix, "PrimitiveProperty<Impl, ", offset, ", ", type,
                     kj::mv(propertyMaskParam), kj::mv(propertyTail))
       };
 
     } else if (kind == FieldKind::INTERFACE) {
       return FieldText {
         kj::mv(unionCheck),
-        kj::strTree(prefix, "InterfaceProperty<PropImpl, ", offset, ", ",
+        kj::strTree(prefix, "InterfaceProperty<Impl, ", offset, ", ",
                     type, kj::mv(propertyTail)),
 
         kj::strTree(hasDiscriminantValue(proto) ? kj::strTree() : kj::strTree(
@@ -737,7 +737,7 @@ private:
     } else if (kind == FieldKind::ANY_POINTER) {
       return FieldText {
         kj::mv(unionCheck),
-        kj::strTree(prefix, "AnyPointerProperty<PropImpl, ", offset, kj::mv(propertyTail))
+        kj::strTree(prefix, "AnyPointerProperty<Impl, ", offset, kj::mv(propertyTail))
       };
 
     } else {
@@ -756,11 +756,11 @@ private:
 
       switch (kind) {
         case FieldKind::STRUCT:
-          propertyType = "PointerProperty";
+          propertyType = "StructProperty";
           break;
 
         case FieldKind::BLOB:
-          propertyType = "BlobProperty";
+          propertyType = typeBody.isText() ? "TextProperty" : "BlobProperty";
           break;
 
         case FieldKind::LIST:
@@ -776,7 +776,8 @@ private:
       return FieldText {
         kj::mv(unionCheck),
 
-        kj::strTree(prefix, propertyType, "<PropImpl, ", offset, ", ", type,
+        kj::strTree(prefix, propertyType, "<Impl, ", offset,
+                    typeBody.isText() ? kj::strTree() : kj::strTree(", ", type),
                     kj::mv(propertyDefault), kj::mv(propertyTail)),
 
         kj::strTree(kind == FieldKind::STRUCT && !hasDiscriminantValue(proto)
@@ -800,17 +801,17 @@ private:
                              kj::Array<kj::StringTree>&& methods,
                              kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
-        "template <template <typename...> class Impl>\n"
+        "template <typename Impl>\n"
         "class ", fullName, "::Base {\n"
-        "  typedef typename Impl<Base>::PropertyImpl PropImpl;\n"
+        "  typedef typename Impl::template UnionMember<Base> UnionMember;\n"
         "\n"
         "public:\n"
         "  Base(): _impl() {}\n"
-        "  Base(Impl<Base>& impl): _impl(impl) {}\n"
-        "  Base(const Impl<Base>& impl): _impl(impl) {}\n"
-        "  Base(Impl<Base>&& impl): _impl(::kj::mv(impl)) {}\n"
+        "  Base(UnionMember& impl): _impl(impl) {}\n"
+        "  Base(const UnionMember& impl): _impl(impl) {}\n"
+        "  Base(UnionMember&& impl): _impl(::kj::mv(impl)) {}\n"
         "  Base(Base& other): _impl(other._impl) {}\n"
-        "  template <typename = ::kj::EnableIf<PropImpl::isConst>>\n"
+        "  template <typename = ::kj::EnableIf<Impl::CONST>>\n"
         "  Base(const Base& other): _impl(other._impl) {}\n"
         "  Base(Base&& other): _impl(::kj::mv(other._impl)) {}\n"
         "  ~Base() { ::kj::dtor(_impl); }\n"
@@ -828,7 +829,7 @@ private:
         kj::mv(methods),
         "  union {\n",
         kj::mv(properties),
-        "    Impl<Base> _impl;\n"
+        "    UnionMember _impl;\n"
         "  };\n"
         "\n"
         "protected:\n"
@@ -881,7 +882,7 @@ private:
           "struct ", fullName, " {\n",
           "  ", name, "() = delete;\n"
           "\n"
-          "  template <template <typename...> class Impl>\n"
+          "  template <typename Impl>\n"
           "  class Base;\n"
           "\n"
           "  typedef ::capnp::altcxx::Reader<", name, "> Reader;\n"

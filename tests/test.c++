@@ -149,7 +149,7 @@ TEST(Test, Groups) {
 
     EXPECT_EQ_CAST(12345678, foo.corge);
     EXPECT_EQ_CAST(123456789012345ll, foo.grault);
-    EXPECT_EQ("foobar", *foo.garply);
+    EXPECT_EQ("foobar", foo.garply.get());
   }
 
   {
@@ -159,7 +159,7 @@ TEST(Test, Groups) {
     bar.garply = 234567890123456ll;
 
     EXPECT_EQ_CAST(23456789, bar.corge);
-    EXPECT_EQ("barbaz", *bar.grault);
+    EXPECT_EQ("barbaz", bar.grault.get());
     EXPECT_EQ_CAST(234567890123456ll, bar.garply);
   }
 
@@ -170,8 +170,8 @@ TEST(Test, Groups) {
     baz.garply = "quxquux";
 
     EXPECT_EQ_CAST(34567890, baz.corge);
-    EXPECT_EQ("bazqux", *baz.grault);
-    EXPECT_EQ("quxquux", *baz.garply);
+    EXPECT_EQ("bazqux", baz.grault.get());
+    EXPECT_EQ("quxquux", baz.garply.get());
   }
 }
 
@@ -192,7 +192,7 @@ TEST(Test, Orphan) {
   root.structField = kj::mv(orphan);
   EXPECT_TRUE(orphan == nullptr);
   EXPECT_TRUE(root.structField != nullptr);
-  checkTestMessage(*root.asReader().structField);
+  checkTestMessage(root.asReader().structField);
 }
 
 class TestRestorer final: public SturdyRefRestorer<test::TestSturdyRefObjectId> {
@@ -284,7 +284,7 @@ TEST(Test, Pipelining) {
       EXPECT_EQ(0, reverseCallCount);
 
       auto response = pipelinePromise.wait(ioContext.waitScope);
-      EXPECT_EQ("bar", *response.x);
+      EXPECT_EQ("bar", response.x.get());
 
       auto response2 = pipelinePromise2.wait(ioContext.waitScope);
       checkTestMessage(response2);
