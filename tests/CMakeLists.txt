@@ -9,8 +9,10 @@ capnp_compile(CAPNP_CXX "test.capnp" PLUGIN ${CAPNP_PLUGIN_ALTCXX}
 
 set(SOURCES
   ${CAPNP_CXX}
+  any-test.c++
+  basic-test.c++
+  rpc-test.c++
   test-util.c++
-  test.c++
 )
 
 add_executable(altc++-test ${SOURCES})

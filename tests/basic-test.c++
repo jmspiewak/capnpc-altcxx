@@ -22,9 +22,6 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <kj/debug.h>
-#include <kj/async-io.h>
-#include <capnp/rpc-twoparty.h>
 #include <capnp/message.h>
 #include <gtest/gtest.h>
 #include "test-util.h"
@@ -33,7 +30,7 @@ namespace capnp {
 namespace _ {  // private
 namespace {
 
-TEST(Test, AllTypes) {
+TEST(Basic, AllTypes) {
   MallocMessageBuilder builder;
 
   initTestMessage(builder.initRoot<TestAllTypes>());
@@ -52,7 +49,7 @@ TEST(Test, AllTypes) {
             reader.getRoot<TestAllTypes>().totalSize().wordCount);
 }
 
-TEST(Test, Defaults) {
+TEST(Basic, Defaults) {
   AlignedData<1> nullRoot = {{0, 0, 0, 0, 0, 0, 0, 0}};
   kj::ArrayPtr<const word> segments[1] = {kj::arrayPtr(nullRoot.words, 1)};
   SegmentArrayMessageReader reader(kj::arrayPtr(segments, 1));
@@ -63,7 +60,7 @@ TEST(Test, Defaults) {
   checkTestMessage(TestDefaults::Reader());
 }
 
-TEST(Test, DefaultInitialization) {
+TEST(Basic, DefaultInitialization) {
   MallocMessageBuilder builder;
 
   checkTestMessage(builder.getRoot<TestDefaults>());  // first pass initializes to defaults
@@ -77,7 +74,7 @@ TEST(Test, DefaultInitialization) {
   checkTestMessage(reader.getRoot<TestDefaults>());
 }
 
-TEST(Test, ListDefaults) {
+TEST(Basic, ListDefaults) {
   MallocMessageBuilder builder;
   TestListDefaults::Builder root = builder.getRoot<TestListDefaults>();
 
@@ -86,7 +83,7 @@ TEST(Test, ListDefaults) {
   checkTestMessage(root.asReader());
 }
 
-TEST(Test, BuildListDefaults) {
+TEST(Basic, BuildListDefaults) {
   MallocMessageBuilder builder;
   TestListDefaults::Builder root = builder.getRoot<TestListDefaults>();
 
@@ -96,7 +93,7 @@ TEST(Test, BuildListDefaults) {
   checkTestMessage(root.asReader());
 }
 
-TEST(Test, Unions) {
+TEST(Basic, Unions) {
   MallocMessageBuilder builder;
   TestUnion::Builder root = builder.getRoot<TestUnion>();
 
@@ -115,7 +112,7 @@ TEST(Test, Unions) {
   EXPECT_DEBUG_ANY_THROW((bool)root.union0.u0f0s1);
 }
 
-TEST(Test, UnnamedUnion) {
+TEST(Basic, UnnamedUnion) {
   MallocMessageBuilder builder;
   auto root = builder.initRoot<test::TestUnnamedUnion>();
   EXPECT_EQ(test::TestUnnamedUnion::FOO, root.which());
@@ -137,7 +134,7 @@ TEST(Test, UnnamedUnion) {
   EXPECT_DEBUG_ANY_THROW((int)root.asReader().bar);
 }
 
-TEST(Test, Groups) {
+TEST(Basic, Groups) {
   MallocMessageBuilder builder;
   auto root = builder.initRoot<test::TestGroups>();
 
@@ -175,7 +172,7 @@ TEST(Test, Groups) {
   }
 }
 
-TEST(Test, Orphan) {
+TEST(Basic, Orphan) {
   MallocMessageBuilder builder;
   auto root = builder.initRoot<TestAllTypes>();
 
@@ -193,142 +190,6 @@ TEST(Test, Orphan) {
   EXPECT_TRUE(orphan == nullptr);
   EXPECT_TRUE(root.structField != nullptr);
   checkTestMessage(root.asReader().structField);
-}
-
-class TestRestorer final: public SturdyRefRestorer<test::TestSturdyRefObjectId> {
-public:
-  TestRestorer(int& callCount): callCount(callCount) {}
-
-  Capability::Client restore(test::TestSturdyRefObjectId::Reader objectId) override {
-    switch (objectId.tag) {
-      case test::TestSturdyRefObjectId::Tag::TEST_INTERFACE:
-        return kj::heap<TestInterfaceImpl>(callCount);
-      case test::TestSturdyRefObjectId::Tag::TEST_EXTENDS:
-        return Capability::Client(newBrokenCap("No TestExtends implemented."));
-      case test::TestSturdyRefObjectId::Tag::TEST_PIPELINE:
-        return kj::heap<TestPipelineImpl>(callCount);
-      default:
-        return Capability::Client(newBrokenCap("Not implemented."));
-    }
-    KJ_UNREACHABLE;
-  }
-
-private:
-  int& callCount;
-};
-
-kj::AsyncIoProvider::PipeThread runServer(kj::AsyncIoProvider& ioProvider, int& callCount) {
-  return ioProvider.newPipeThread(
-      [&callCount](kj::AsyncIoProvider& ioProvider, kj::AsyncIoStream& stream,
-                   kj::WaitScope& waitScope) {
-    TwoPartyVatNetwork network(stream, rpc::twoparty::Side::SERVER);
-    TestRestorer restorer(callCount);
-    auto server = makeRpcServer(network, restorer);
-    network.onDisconnect().wait(waitScope);
-  });
-}
-
-Capability::Client getPersistentCap(RpcSystem<rpc::twoparty::SturdyRefHostId>& client,
-                                    rpc::twoparty::Side side,
-                                    test::TestSturdyRefObjectId::Tag tag) {
-  // Create the SturdyRefHostId.
-  MallocMessageBuilder hostIdMessage(8);
-  auto hostId = hostIdMessage.initRoot<rpc::twoparty::SturdyRefHostId>();
-  hostId.setSide(side);
-
-  // Create the SturdyRefObjectId.
-  MallocMessageBuilder objectIdMessage(8);
-  objectIdMessage.initRoot<test::TestSturdyRefObjectId>().tag = tag;
-
-  // Connect to the remote capability.
-  return client.restore(hostId, objectIdMessage.getRoot<AnyPointer>());
-}
-
-TEST(Test, Pipelining) {
-  auto ioContext = kj::setupAsyncIo();
-  int callCount = 0;
-  int reverseCallCount = 0;  // Calls back from server to client.
-
-  auto serverThread = runServer(*ioContext.provider, callCount);
-  TwoPartyVatNetwork network(*serverThread.pipe, rpc::twoparty::Side::CLIENT);
-  auto rpcClient = makeRpcClient(network);
-
-  bool disconnected = false;
-  bool drained = false;
-  kj::Promise<void> disconnectPromise = network.onDisconnect().then([&]() { disconnected = true; });
-  kj::Promise<void> drainedPromise = network.onDrained().then([&]() { drained = true; });
-
-  {
-    // Request the particular capability from the server.
-    auto client = getPersistentCap(rpcClient, rpc::twoparty::Side::SERVER,
-        test::TestSturdyRefObjectId::Tag::TEST_PIPELINE).castAs<test::TestPipeline>();
-
-    {
-      // Use the capability.
-      auto request = client.getCapRequest();
-      request.n = 234;
-      request.inCap = kj::heap<TestInterfaceImpl>(reverseCallCount);
-
-      auto promise = request.send();
-
-      auto pipelineRequest = promise.outBox->cap->fooRequest();
-      pipelineRequest.i = 321;
-      auto pipelinePromise = pipelineRequest.send();
-
-      auto pipelineRequest2 = promise.outBox->cap->castAs<test::TestExtends>().graultRequest();
-      auto pipelinePromise2 = pipelineRequest2.send();
-
-      promise = nullptr;  // Just to be annoying, drop the original promise.
-
-      EXPECT_EQ(0, callCount);
-      EXPECT_EQ(0, reverseCallCount);
-
-      auto response = pipelinePromise.wait(ioContext.waitScope);
-      EXPECT_EQ("bar", response.x.get());
-
-      auto response2 = pipelinePromise2.wait(ioContext.waitScope);
-      checkTestMessage(response2);
-
-      EXPECT_EQ(3, callCount);
-      EXPECT_EQ(1, reverseCallCount);
-    }
-
-    EXPECT_FALSE(disconnected);
-    EXPECT_FALSE(drained);
-
-    // What if we disconnect?
-    serverThread.pipe->shutdownWrite();
-
-    // The other side should also disconnect.
-    disconnectPromise.wait(ioContext.waitScope);
-    EXPECT_FALSE(drained);
-
-    {
-      // Use the now-broken capability.
-      auto request = client.getCapRequest();
-      request.n = 234;
-      request.inCap = kj::heap<TestInterfaceImpl>(reverseCallCount);
-
-      auto promise = request.send();
-
-      auto pipelineRequest = promise.outBox->cap->fooRequest();
-      pipelineRequest.i = 321;
-      auto pipelinePromise = pipelineRequest.send();
-
-      auto pipelineRequest2 = promise.outBox->cap->castAs<test::TestExtends>().graultRequest();
-      auto pipelinePromise2 = pipelineRequest2.send();
-
-      EXPECT_ANY_THROW(pipelinePromise.wait(ioContext.waitScope));
-      EXPECT_ANY_THROW(pipelinePromise2.wait(ioContext.waitScope));
-
-      EXPECT_EQ(3, callCount);
-      EXPECT_EQ(1, reverseCallCount);
-    }
-
-    EXPECT_FALSE(drained);
-  }
-
-  drainedPromise.wait(ioContext.waitScope);
 }
 
 }  // namespace
