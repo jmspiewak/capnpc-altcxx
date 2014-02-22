@@ -24,12 +24,18 @@
 #ifndef CAPNP_ALTCXX_COMMON_H_
 #define CAPNP_ALTCXX_COMMON_H_
 
+#include <kj/common.h>
+
 namespace capnp {
 namespace altcxx {
 
 template <bool b, typename T, typename F> struct Conditional_ {typedef T Type;};
 template <typename T, typename F> struct Conditional_<false, T, F> {typedef F Type;};
 template <bool b, typename T, typename F> using Conditional = typename Conditional_<b, T, F>::Type;
+
+template <typename T, typename U> struct Same { static constexpr bool VALUE = false; };
+template <typename T> struct Same<T, T> { static constexpr bool VALUE = true; };
+template <typename T, typename U> inline constexpr bool same() { return Same<T, U>::VALUE; }
 
 template <template <typename...> class Template, typename... Args>
 struct Apply {
@@ -40,6 +46,36 @@ struct Apply {
 template <typename T, T V>
 struct Constant {
   static constexpr T VALUE = V;
+};
+
+// ---------------------------------------------------------------------------------------
+
+template <typename... Ts>
+struct Types {
+  template <typename... Us>
+  using Add = Types<Ts..., Us...>;
+};
+
+template <typename Types1, typename Types2> struct Cat_;
+
+template <typename... T1s, typename... T2s>
+struct Cat_<Types<T1s...>, Types<T2s...>> {
+  typedef Types<T1s..., T2s...> Result;
+};
+
+template <typename Types1, typename Types2>
+using Cat = typename Cat_<Types1, Types2>::Result;
+
+template <typename T, typename Types> struct Contains;
+
+template <typename T, typename T0, typename... Ts>
+struct Contains<T, Types<T0, Ts...>> {
+  static constexpr bool VALUE = (same<T, T0>() || Contains<T, Types<Ts...>>::VALUE);
+};
+
+template <typename T>
+struct Contains<T, Types<>> {
+  static constexpr bool VALUE = false;
 };
 
 } // namespace altcxx

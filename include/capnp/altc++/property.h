@@ -99,7 +99,7 @@ struct PointerDefault<raw, offset, 0> {
 template <uint offset>
 struct ClearPointer {
   static bool init(_::StructBuilder& builder) {
-    builder.getPointerField(offset * POINTERS).clear();
+    builder.getPointerField(offset).clear();
     return true;
   }
 };
@@ -171,28 +171,29 @@ struct PipelineGetPointerAsCapOp {
 // =======================================================================================
 // Impl transformations.
 
-template <typename MaybeInUnion, typename Parent>
+template <typename Union, typename Parent>
 struct GroupTransform {
   typedef typename Parent::Helper Helper;
   static constexpr int DEPTH = Parent::DEPTH;
 
-  static typename Helper::Struct transform(void* ptr) {
+  template <typename T>
+  static typename Helper::Struct transform(T* ptr) {
     typename Helper::Struct s = Parent::transform(ptr);
-    MaybeInUnion::check(s);
+    Union::check(s);
     return s;
   }
 };
 
-template <typename Off, typename T, typename MaybeDefault, typename MaybeInUnion, typename Parent>
+template <typename Off, typename Size, typename Default, typename Union, typename Parent>
 struct PointerTransform {
   typedef typename Parent::Helper Helper;
   static constexpr int DEPTH = Parent::DEPTH + 1;
 
-  static typename Helper::Struct transform(void* ptr) {
+  template <typename T>
+  static typename Helper::Struct transform(T* ptr) {
     typename Helper::Struct s = Parent::transform(ptr);
-    MaybeInUnion::check(s);
-    return Helper::template getStruct<T>(s.getPointerField(Off::VALUE * POINTERS),
-                                         MaybeDefault::ptr());
+    Union::check(s);
+    return Helper::getStruct(s.getPointerField(Off::VALUE), Size::value, Default::ptr());
   }
 };
 
@@ -200,20 +201,20 @@ struct PointerTransform {
 // Property types.
 
 template <typename Impl, uint offset, typename T, typename SafeMask<T>::Type mask = 0,
-          typename MaybeInUnion = NotInUnion>
+          typename Union = NotInUnion>
 struct PrimitiveProperty {
   KJ_DISALLOW_COPY(PrimitiveProperty);
 
   T get() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::check(s);
+    Union::check(s);
     return MaybeMasked<typename Impl::Struct, offset, T, mask>::get(s);
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   void set(T val) {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
+    Union::setDiscriminant(s);
     MaybeMasked<typename Impl::Struct, offset, T, mask>::set(s, val);
   }
 
@@ -221,21 +222,21 @@ struct PrimitiveProperty {
   T operator = (T val) { set(val); return val; }
 };
 
-template <typename Impl, typename T, typename Initializer, typename MaybeInUnion = NotInUnion>
+template <typename Impl, typename T, typename Initializer, typename Union = NotInUnion>
 struct GroupProperty: public T::template Base<typename Impl::template Push<
-                             Apply<GroupTransform, MaybeInUnion>::template Result>> {
+                             Apply<GroupTransform, Union>::template Result>> {
   KJ_DISALLOW_COPY(GroupProperty);
 
   typename Impl::template TypeFor<T> get() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::check(s);
+    Union::check(s);
     return typename Impl::template TypeFor<T>(s);
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   typename Impl::template TypeFor<T> init() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
+    Union::setDiscriminant(s);
     Initializer::init(s);
     return typename Impl::template TypeFor<T>(s);
   }
@@ -243,76 +244,70 @@ struct GroupProperty: public T::template Base<typename Impl::template Push<
   operator typename Impl::template TypeFor<T> () { return get(); }
 };
 
-template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
+template <typename Impl, uint offset, typename T, typename Default = NoDefault,
+          typename Union = NotInUnion>
 struct PointerProperty {
   KJ_DISALLOW_COPY(PointerProperty);
 
   typename Impl::template TypeFor<T> get() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::check(s);
-    return MaybeDefault::template get<T, Impl>(pointer(s));
+    Union::check(s);
+    return Default::template get<T, Impl>(s.getPointerField(offset));
   }
 
   ReaderFor<T> asReader() { return get(); }
 
   bool isNull() {
     auto s = Impl::asStruct(this);
-    if (!MaybeInUnion::isThis(s)) return true;
-    return pointer(s).isNull();
+    if (!Union::isThis(s)) return true;
+    return s.getPointerField(offset).isNull();
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   void set(ReaderFor<T> val) {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    _::PointerHelpers<T>::set(pointer(s), val);
+    Union::setDiscriminant(s);
+    _::PointerHelpers<T>::set(s.getPointerField(offset), val);
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   void adopt(Orphan<T>&& val) {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    _::PointerHelpers<T>::adopt(pointer(s), kj::mv(val));
+    Union::setDiscriminant(s);
+    _::PointerHelpers<T>::adopt(s.getPointerField(offset), kj::mv(val));
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   Orphan<T> disown() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::check(s);
-    return _::PointerHelpers<T>::disown(pointer(s));
+    Union::check(s);
+    return _::PointerHelpers<T>::disown(s.getPointerField(offset));
   }
 
   bool operator == (decltype(nullptr)) { return isNull(); }
   bool operator != (decltype(nullptr)) { return !isNull(); }
 
-  void operator = (ReaderFor<T> val) { set(val); }
-  void operator = (Orphan<T>&& val)  { adopt(kj::mv(val)); }
-
-  operator typename Impl::template TypeFor<T> () { return this->get(); }
-
-protected:
-  static typename Impl::Pointer pointer(typename Impl::Struct& s) {
-    return s.getPointerField(offset * POINTERS);
-  }
+  operator typename Impl::template TypeFor<T> () { return get(); }
 };
 
-template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
-struct StructProperty: PointerProperty<Impl, offset, T, MaybeDefault, MaybeInUnion>,
+// ---------------------------------------------------------------------------------------
+
+template <typename Impl, uint offset, typename T, typename Default = NoDefault,
+          typename Union = NotInUnion>
+struct StructProperty: PointerProperty<Impl, offset, T, Default, Union>,
     public Conditional<(Impl::DEPTH > 4), Void,
         typename T::template Base<typename Impl::template Push<Apply<PointerTransform,
-            Constant<uint, offset>, T, MaybeDefault, MaybeInUnion>::template Result>>> {
+            Constant<uint, offset>, _::StructSize_<T>, Default, Union>::template Result>>> {
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   BuilderFor<T> init() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    return _::PointerHelpers<T>::init(this->pointer(s));
+    Union::setDiscriminant(s);
+    return _::PointerHelpers<T>::init(s.getPointerField(offset));
   }
 
-  void operator = (ReaderFor<T> val) { this->set(val); }
-  void operator = (Orphan<T>&& val)  { this->adopt(kj::mv(val)); }
+  StructProperty& operator = (ReaderFor<T> val) { this->set(val); return *this; }
+  StructProperty& operator = (Orphan<T>&& val)  { this->adopt(kj::mv(val)); return *this; }
 };
 
 #define INFER(expr) decltype(expr) { return expr; }
@@ -320,16 +315,16 @@ struct StructProperty: PointerProperty<Impl, offset, T, MaybeDefault, MaybeInUni
 #define FORWARD_UNARY(name, t0) auto name(t0 a0) -> INFER(this->get().name(a0))
 #define FORWARD_BINARY(name, t0, t1) auto name(t0 a0, t1 a1) -> INFER(this->get().name(a0, a1))
 
-template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
-struct ContainerProperty: PointerProperty<Impl, offset, T, MaybeDefault, MaybeInUnion> {
+template <typename Impl, uint offset, typename T, typename Default = NoDefault,
+          typename Union = NotInUnion>
+struct ContainerProperty: PointerProperty<Impl, offset, T, Default, Union> {
   FORWARD_NULLARY(size)
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   BuilderFor<T> init(size_t n) {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    return _::PointerHelpers<T>::init(this->pointer(s), n);
+    Union::setDiscriminant(s);
+    return _::PointerHelpers<T>::init(s.getPointerField(offset), n);
   }
 
   template <typename U>
@@ -339,9 +334,9 @@ struct ContainerProperty: PointerProperty<Impl, offset, T, MaybeDefault, MaybeIn
   bool operator != (U&& val) const { return this->get() == kj::fwd<U>(val); }
 };
 
-template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
-struct BlobProperty: ContainerProperty<Impl, offset, T, MaybeDefault, MaybeInUnion> {
+template <typename Impl, uint offset, typename T, typename Default = NoDefault,
+          typename Union = NotInUnion>
+struct BlobProperty: ContainerProperty<Impl, offset, T, Default, Union> {
   FORWARD_BINARY(slice, size_t, size_t)
   FORWARD_NULLARY(begin)
   FORWARD_NULLARY(end)
@@ -352,13 +347,13 @@ struct BlobProperty: ContainerProperty<Impl, offset, T, MaybeDefault, MaybeInUni
             typename = kj::EnableIf<kj::canConvert<typename Impl::template TypeFor<T>, U>()>>
   operator U () { return this->get(); }
 
-  void operator = (ReaderFor<T> val) { this->set(val); }
-  void operator = (Orphan<T>&& val)  { this->adopt(kj::mv(val)); }
+  BlobProperty& operator = (ReaderFor<T> val) { this->set(val); return *this; }
+  BlobProperty& operator = (Orphan<T>&& val)  { this->adopt(kj::mv(val)); return *this; }
 };
 
-template <typename Impl, uint offset, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
-struct TextProperty: BlobProperty<Impl, offset, Text, MaybeDefault, MaybeInUnion> {
+template <typename Impl, uint offset, typename Default = NoDefault,
+          typename Union = NotInUnion>
+struct TextProperty: BlobProperty<Impl, offset, Text, Default, Union> {
   FORWARD_NULLARY(asArray)
   FORWARD_NULLARY(cStr)
 
@@ -373,25 +368,25 @@ struct TextProperty: BlobProperty<Impl, offset, Text, MaybeDefault, MaybeInUnion
   FORWARD_UNARY(slice, size_t)
 #undef SELF
 
-  void operator = (ReaderFor<Text> val) { this->set(val); }
-  void operator = (Orphan<Text>&& val)  { this->adopt(kj::mv(val)); }
+  TextProperty& operator = (ReaderFor<Text> val) { this->set(val); return *this; }
+  TextProperty& operator = (Orphan<Text>&& val)  { this->adopt(kj::mv(val)); return *this; }
 };
 
-template <typename Impl, uint offset, typename T, typename MaybeDefault = NoDefault,
-          typename MaybeInUnion = NotInUnion>
-struct ListProperty: ContainerProperty<Impl, offset, List<T>, MaybeDefault, MaybeInUnion> {
+template <typename Impl, uint offset, typename T, typename Default = NoDefault,
+          typename Union = NotInUnion>
+struct ListProperty: ContainerProperty<Impl, offset, List<T>, Default, Union> {
   typedef typename Impl::template TypeFor<T> Element;
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   void set(kj::ArrayPtr<const ReaderFor<T>> val) {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    _::PointerHelpers<List<T>>::set(this->pointer(s), val);
+    Union::setDiscriminant(s);
+    _::PointerHelpers<List<T>>::set(s.getPointerField(offset), val);
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
   typename List<T>::Builder init(size_t n) {
-    return ContainerProperty<Impl, offset, List<T>, MaybeDefault, MaybeInUnion>::init(n);
+    return ContainerProperty<Impl, offset, List<T>, Default, Union>::init(n);
   }
 
   template <typename U, typename = kj::EnableIf<!Impl::CONST>>
@@ -427,99 +422,74 @@ struct ListProperty: ContainerProperty<Impl, offset, List<T>, MaybeDefault, Mayb
 
   Element operator [] (size_t n) { return this->get()[n]; }
 
-  void operator = (ReaderFor<List<T>> val) { this->set(val); }
-  void operator = (Orphan<List<T>>&& val)  { this->adopt(kj::mv(val)); }
-  void operator = (kj::ArrayPtr<const ReaderFor<T>> val) { set(val); }
+  ListProperty& operator = (ReaderFor<List<T>> val) { this->set(val); return *this; }
+  ListProperty& operator = (Orphan<List<T>>&& val)  { this->adopt(kj::mv(val)); return *this; }
+  ListProperty& operator = (kj::ArrayPtr<const ReaderFor<T>> val) { set(val); return *this; }
 };
 
-template <typename Impl, uint offset, typename T, typename MaybeInUnion = NotInUnion>
-struct InterfaceProperty: PointerProperty<Impl, offset, T, NoDefault, MaybeInUnion> {
-  template <typename = kj::EnableIf<!Impl::CONST>>
-  void set(typename T::Client&& val) {
-    auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    _::PointerHelpers<T>::set(this->pointer(s), kj::mv(val));
-  }
+// ---------------------------------------------------------------------------------------
 
-  template <typename = kj::EnableIf<!Impl::CONST>>
-  void set(typename T::Client& val) {
-    auto s = Impl::asStruct(this);
-    MaybeInUnion::setDiscriminant(s);
-    _::PointerHelpers<T>::set(this->pointer(s), val);
-  }
-
-  void operator = (Orphan<T>&& val)  { this->adopt(kj::mv(val)); }
-  void operator = (typename T::Client& val) { set(val); }
-  void operator = (typename T::Client&& val) { set(kj::mv(val)); }
-
-  typename T::Client operator * () { return this->get(); }
-  _::TemporaryPointer<typename T::Client> operator -> () { return this->get(); }
-};
-
-template <typename Impl, uint offset, typename MaybeInUnion = NotInUnion>
+template <typename Impl, uint offset, typename Union = NotInUnion>
 struct AnyPointerProperty {
   KJ_DISALLOW_COPY(AnyPointerProperty);
 
   typename Impl::template TypeFor<AnyPointer> get() {
     auto s = Impl::asStruct(this);
-    MaybeInUnion::check(s);
-    return pointer(s);
+    Union::check(s);
+    return s.getPointerField(offset);
   }
 
   bool isNull() {
     auto s = Impl::asStruct(this);
-    if (!MaybeInUnion::isThis(s)) return true;
-    return pointer(s).isNull();
+    if (!Union::isThis(s)) return true;
+    return s.getPointerField(offset).isNull();
   }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
-  void clear() { this->get().clear(); }
+  void clear() { get().clear(); }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
-  void set(AnyPointer::Reader value) { this->get().set(value); }
+  void set(AnyPointer::Reader value) { get().set(value); }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
-  Orphan<AnyPointer> disown() { return this->get().disown(); }
+  Orphan<AnyPointer> disown() { return get().disown(); }
 
   template <typename = kj::EnableIf<!Impl::CONST>>
-  AnyPointer::Reader asReader() { return this->get().asReader(); }
+  AnyPointer::Reader asReader() { return get().asReader(); }
 
   template <typename T>
-  typename Impl::template TypeFor<T> getAs() { return this->get().getAs<T>(); }
+  typename Impl::template TypeFor<T> getAs() { return get().getAs<T>(); }
 
   template <typename T, typename U>
-  typename Impl::template TypeFor<T> getAs(U&& u) { return this->get().getAs<T>(kj::fwd<U>(u)); }
+  typename Impl::template TypeFor<T> getAs(U&& u) { return get().getAs<T>(kj::fwd<U>(u)); }
 
   template <typename T, typename... Args, typename = kj::EnableIf<!Impl::CONST>>
-  BuilderFor<T> initAs(Args&&... args) { return this->get().initAs<T>(kj::fwd<Args>(args)...); }
+  BuilderFor<T> initAs(Args&&... args) { return get().initAs<T>(kj::fwd<Args>(args)...); }
 
   template <typename T, typename = kj::EnableIf<!Impl::CONST>>
-  void setAs(ReaderFor<T> value) { this->get().setAs<T>(value); }
+  void setAs(ReaderFor<T> value) { get().setAs<T>(value); }
 
   template <typename T, typename = kj::EnableIf<!Impl::CONST>>
-  void setAs(std::initializer_list<ReaderFor<ListElementType<T>>> l) { this->get().setAs<T>(l); }
+  void setAs(std::initializer_list<ReaderFor<ListElementType<T>>> l) { get().setAs<T>(l); }
 
   template <typename T, typename = kj::EnableIf<!Impl::CONST>>
-  void adopt(Orphan<T>&& orphan) { this->get().adopt(kj::mv(orphan)); }
+  void adopt(Orphan<T>&& orphan) { get().adopt(kj::mv(orphan)); }
 
   template <typename T, typename... Args, typename = kj::EnableIf<!Impl::CONST>>
-  Orphan<T> disownAs(Args&&... args) { return this->get().disownAs<T>(kj::fwd<Args>(args)...); }
+  Orphan<T> disownAs(Args&&... args) { return get().disownAs<T>(kj::fwd<Args>(args)...); }
 
   FORWARD_NULLARY(targetSize)
 
   bool operator == (decltype(nullptr)) { return isNull(); }
   bool operator != (decltype(nullptr)) { return !isNull(); }
 
-  void operator = (AnyPointer::Reader val) { set(val); }
-  void operator = (Orphan<AnyPointer>&& val)  { adopt(kj::mv(val)); }
+  AnyPointerProperty& operator = (AnyPointer::Reader val) { set(val); return *this; }
+  AnyPointerProperty& operator = (Orphan<AnyPointer>&& val)  { adopt(kj::mv(val)); return *this; }
 
-  operator typename Impl::template TypeFor<AnyPointer> () { return this->get(); }
-
-protected:
-  static typename Impl::Pointer pointer(typename Impl::Struct& s) {
-    return s.getPointerField(offset * POINTERS);
-  }
+  operator typename Impl::template TypeFor<AnyPointer> () { return get(); }
 };
+
+// ---------------------------------------------------------------------------------------
 
 template <typename T, typename Operation = PipelineNoOp>
 struct PipelineProperty {

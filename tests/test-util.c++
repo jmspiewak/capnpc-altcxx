@@ -481,10 +481,7 @@ kj::Promise<void> TestPipelineImpl::getCap(GetCapContext context) {
   auto params = context.getParams();
   EXPECT_EQ_CAST(234, params.n);
 
-  auto cap = *params.inCap;
-  context.releaseParams();
-
-  auto request = cap.fooRequest();
+  auto request = params.inCap.fooRequest();
   request.i = 123;
   request.j = true;
 

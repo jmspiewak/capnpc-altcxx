@@ -51,8 +51,7 @@ struct ReaderHelper {
   template <typename T>
   using TypeFor = ReaderFor<T>;
 
-  template <typename T>
-  static Struct getStruct(Pointer ptr, const word* def) {
+  static Struct getStruct(Pointer ptr, _::StructSize, const word* def) {
     return ptr.getStruct(def);
   }
 
@@ -69,9 +68,8 @@ struct BuilderHelper {
   template <typename T>
   using TypeFor = BuilderFor<T>;
 
-  template <typename T>
-  static Struct getStruct(Pointer ptr, const word* def) {
-    return ptr.getStruct(_::structSize<T>(), def);
+  static Struct getStruct(Pointer ptr, _::StructSize size, const word* def) {
+    return ptr.getStruct(size, def);
   }
 
   static _::StructReader asReader(Struct s) {
@@ -84,20 +82,22 @@ struct RootTransorm {
   typedef HelperT Helper;
   static constexpr int DEPTH = 0;
 
-  static typename Helper::Struct transform(void* ptr) {
+  template <typename T>
+  static typename Helper::Struct& transform(T* ptr) {
     return *reinterpret_cast<typename Helper::Struct*>(ptr);
   }
 };
 
 // =======================================================================================
 
-template <typename Transform>
-struct BasicImpl: public Transform::Helper {
+template <typename TransformT>
+struct BasicImpl: public TransformT::Helper {
+  typedef TransformT Transform;
   typedef typename Transform::Helper Helper;
   static constexpr int DEPTH = Transform::DEPTH;
 
   template <template <typename...> class NewTransform>
-  using Push = BasicImpl<NewTransform<Transform> >;
+  using Push = BasicImpl<NewTransform<Transform>>;
 
   template <typename Friend>
   class UnionMember {
@@ -115,11 +115,11 @@ struct BasicImpl: public Transform::Helper {
 
   template <typename T>
   static typename Helper::Struct asStruct(T* ptr) {
-    return Transform::transform(reinterpret_cast<void*>(ptr));
+    return Transform::transform(ptr);
   }
 };
 
-struct ReaderImpl: public BasicImpl<RootTransorm<ReaderHelper> > {
+struct ReaderImpl: public BasicImpl<RootTransorm<ReaderHelper>> {
   template <typename Friend>
   struct UnionMember: private _::StructReader {
     friend Friend;
@@ -141,7 +141,7 @@ struct ReaderImpl: public BasicImpl<RootTransorm<ReaderHelper> > {
   };
 };
 
-struct BuilderImpl: public BasicImpl<RootTransorm<BuilderHelper> > {
+struct BuilderImpl: public BasicImpl<RootTransorm<BuilderHelper>> {
   template <typename Friend>
   struct UnionMember: private _::StructBuilder {
     friend Friend;
