@@ -574,32 +574,9 @@ private:
     kj::StringTree propertyTail = kj::strTree(kj::mv(maybeInUnion), "> ", propertyName, ";\n");
 
     if (proto.isGroup()) {
-      constexpr int initOpIndent = 35;
-      kj::String initOpPrefix = kj::str(kj::repeat(' ', initOpIndent), "::capnp::altcxx::");
-
-      auto slots = getSortedSlots(schemaLoader.get(field.getProto().getGroup().getTypeId())
-                                  .asStruct());
-
       return FieldText {
         kj::mv(unionCheck),
-
-        kj::strTree(prefix, "GroupProperty<Impl, ", titleCase,
-          ", ::capnp::altcxx::GroupInitializer<\n",
-          KJ_MAP(slot, slots) {
-            switch (sectionFor(slot.whichType)) {
-              case Section::NONE:
-                return kj::strTree();
-
-              case Section::DATA:
-                return kj::strTree(initOpPrefix, "ZeroElement<", slot.offset, ", ",
-                  maskType(slot.whichType), ">,\n");
-
-              case Section::POINTERS:
-                return kj::strTree(initOpPrefix, "ClearPointer<", slot.offset, ">,\n");
-            }
-            KJ_UNREACHABLE;
-          },
-          kj::repeat(' ', initOpIndent), "::capnp::altcxx::GiNoOp>", kj::mv(propertyTail)),
+        kj::strTree(prefix, "GroupProperty<Impl, ", titleCase, kj::mv(propertyTail)),
 
         hasDiscriminantValue(proto) ? kj::strTree() :
           kj::strTree(prefix, "GroupPipelineProperty<Op, ", titleCase, "> ", propertyName, ";\n"),
@@ -796,7 +773,7 @@ private:
   };
 
   kj::StringTree makeBaseDef(kj::StringPtr fullName, bool isUnion, uint discrimOffset,
-                             kj::Array<kj::StringTree>&& methods,
+                             kj::StringTree&& groupInit, kj::Array<kj::StringTree>&& methods,
                              kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
         "template <typename Impl>\n"
@@ -820,7 +797,8 @@ private:
         "\n"
         "protected:\n"
         "  ::capnp::_::StructReader _reader() const { return _impl.asReader(); }\n"
-        "\n"
+        "\n",
+        kj::mv(groupInit),
         "  friend ::kj::StringTree KJ_STRINGIFY(Base base) {\n"
         "    return ::capnp::_::structString<", fullName, ">(base._reader());\n"
         "  }\n"
@@ -859,6 +837,25 @@ private:
 
     auto structNode = proto.getStruct();
     uint discrimOffset = structNode.getDiscriminantOffset();
+    kj::StringTree groupInit;
+
+    if (proto.getStruct().getIsGroup()) {
+      groupInit = kj::strTree(
+          "  static void _init(::capnp::_::StructBuilder& builder) {\n",
+          KJ_MAP(slot, getSortedSlots(schema)) {
+            switch (sectionFor(slot.whichType)) {
+              case Section::NONE:
+                return kj::strTree();
+              case Section::DATA:
+                return kj::strTree(
+                    "    builder.setDataField<", maskType(slot.whichType), ">(",
+                    slot.offset, ", 0);\n");
+              case Section::POINTERS:
+                return kj::strTree("    builder.getPointerField(", slot.offset, ").clear();\n");
+            }
+            KJ_UNREACHABLE;
+          }, "  }\n\n");
+    }
 
     return StructText {
       kj::strTree(
@@ -895,7 +892,8 @@ private:
           "\n"),
 
       kj::strTree(
-          makeBaseDef(fullName, structNode.getDiscriminantCount() != 0, discrimOffset,
+          makeBaseDef(fullName, structNode.getDiscriminantCount() != 0,
+                      discrimOffset, kj::mv(groupInit),
                       KJ_MAP(f, fieldTexts) { return kj::mv(f.unionCheck); },
                       KJ_MAP(f, fieldTexts) { return kj::mv(f.property); }),
           noPipeline ? kj::strTree() : makePipelineDef(fullName, name,

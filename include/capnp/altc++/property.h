@@ -94,38 +94,6 @@ struct PointerDefault<raw, offset, 0> {
 };
 
 // =======================================================================================
-// Group initializer and its operations.
-
-template <uint offset>
-struct ClearPointer {
-  static bool init(_::StructBuilder& builder) {
-    builder.getPointerField(offset).clear();
-    return true;
-  }
-};
-
-template <uint offset, typename T>
-struct ZeroElement {
-  static bool init(_::StructBuilder& builder) {
-    builder.setDataField<T>(offset * ELEMENTS, 0);
-    return true;
-  }
-};
-
-struct GiNoOp {
-  static bool init(_::StructBuilder&) { return true; }
-};
-
-template <typename... FieldInitializers>
-struct GroupInitializer {
-  static void init(_::StructBuilder& builder) {
-    doAll(FieldInitializers::init(builder)...);
-  }
-
-  static void doAll(...) {}
-};
-
-// =======================================================================================
 // Primitive field masking.
 
 template <typename T> struct SafeMask { typedef _::Mask<T> Type; };
@@ -203,7 +171,7 @@ struct PrimitiveProperty {
   T operator = (T val) { set(val); return val; }
 };
 
-template <typename Impl, typename T, typename Initializer, typename Union = NotInUnion>
+template <typename Impl, typename T, typename Union = NotInUnion>
 struct GroupProperty: public T::template Base<typename Impl::template Push<
                              Apply<GroupTransform, Union>::template Result>> {
   KJ_DISALLOW_COPY(GroupProperty);
@@ -218,7 +186,7 @@ struct GroupProperty: public T::template Base<typename Impl::template Push<
   typename Impl::template TypeFor<T> init() {
     auto s = Impl::asStruct(this);
     Union::setDiscriminant(s);
-    Initializer::init(s);
+    this->_init(s);
     return typename Impl::template TypeFor<T>(s);
   }
 
