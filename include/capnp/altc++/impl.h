@@ -161,27 +161,6 @@ struct BuilderImpl: public BasicImpl<RootTransorm<BuilderHelper>> {
 
 // =======================================================================================
 
-template <typename Friend>
-class PrivatePipeline: private AnyPointer::Pipeline {
-  friend Friend;
-
-  template <typename T, Kind k>
-  friend struct ::capnp::ToDynamic_;
-
-  PrivatePipeline(decltype(nullptr)): AnyPointer::Pipeline(nullptr) {}
-  PrivatePipeline(AnyPointer::Pipeline&& p): AnyPointer::Pipeline(kj::mv(p)) {}
-};
-
-template <typename T>
-struct DummyPipeline {
-  typedef T Pipelines;
-
-  DummyPipeline(decltype(nullptr)) {}
-  explicit DummyPipeline(AnyPointer::Pipeline&&) {}
-};
-
-// =======================================================================================
-
 template <typename T>
 class Reader: public T::template Base<ReaderImpl> {
 public:

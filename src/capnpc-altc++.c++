@@ -599,10 +599,10 @@ private:
             }
             KJ_UNREACHABLE;
           },
-          kj::repeat(' ', initOpIndent), "::capnp::altcxx::NoOp>", kj::mv(propertyTail)),
+          kj::repeat(' ', initOpIndent), "::capnp::altcxx::GiNoOp>", kj::mv(propertyTail)),
 
         hasDiscriminantValue(proto) ? kj::strTree() :
-          kj::strTree(prefix, "PipelineProperty<", titleCase, "> ", propertyName, ";\n"),
+          kj::strTree(prefix, "GroupPipelineProperty<Op, ", titleCase, "> ", propertyName, ";\n"),
       };
     }
 
@@ -730,8 +730,7 @@ private:
                     type, kj::mv(propertyTail)),
 
         kj::strTree(hasDiscriminantValue(proto) ? kj::strTree() : kj::strTree(
-          prefix, "PipelineProperty<", type,
-          ", ::capnp::altcxx::PipelineGetPointerAsCapOp<", offset, ">> ", propertyName, ";\n"))
+          prefix, "InterfacePipelineProperty<Op, ", type, ", ", offset, "> ", propertyName, ";\n"))
       };
 
     } else if (kind == FieldKind::ANY_POINTER) {
@@ -781,9 +780,8 @@ private:
                     kj::mv(propertyDefault), kj::mv(propertyTail)),
 
         kj::strTree(kind == FieldKind::STRUCT && !hasDiscriminantValue(proto)
-                    ? kj::strTree(prefix, "PipelineProperty<", type,
-                                  ", ::capnp::altcxx::PipelineGetPointerOp<", offset, ">> ",
-                                  propertyName, ";\n")
+                    ? kj::strTree(prefix, "StructPipelineProperty<Op, ", type,
+                                  ", ", offset, "> ", propertyName, ";\n")
                     : kj::strTree())
       };
     }
@@ -833,20 +831,20 @@ private:
   kj::StringTree makePipelineDef(kj::StringPtr fullName, kj::StringPtr unqualifiedParentType,
                                  kj::Array<kj::StringTree>&& properties) {
     return kj::strTree(
-        "class ", fullName, "::Pipeline {\n"
+        "template <typename Op, typename Impl>\n"
+        "class ", fullName, "::PipelineBase {\n"
         "public:\n"
         "  typedef ", unqualifiedParentType, " Pipelines;\n"
         "\n"
-        "  inline Pipeline(decltype(nullptr)): _typeless(nullptr) {}\n"
-        "  inline Pipeline(Pipeline&& other): _typeless(kj::mv(other._typeless)) {}\n"
-        "  inline explicit Pipeline(::capnp::AnyPointer::Pipeline&& typeless)\n"
-        "      : _typeless(kj::mv(typeless)) {}\n"
-        "  inline ~Pipeline() { kj::dtor(_typeless); }\n"
-        "  inline Pipeline& operator = (Pipeline&& other) { _typeless = kj::mv(other._typeless); return *this; }"
-        "\n",
+        "  PipelineBase(decltype(nullptr)) : _impl(nullptr) {}\n"
+        "  PipelineBase(PipelineBase&& other) : _impl(kj::mv(other._impl)) {}\n"
+        "  PipelineBase(Impl&& impl) : _impl(kj::mv(impl)) {}\n"
+        "  ~PipelineBase() { kj::dtor(_impl); }\n"
+        "  PipelineBase& operator = (PipelineBase&& other) { _impl = kj::mv(other._impl); return *this; }"
+        "\n"
         "  union {\n",
         kj::mv(properties),
-        "    ::capnp::altcxx::PrivatePipeline<Pipeline> _typeless;\n"
+        "    Impl _impl;\n"
         "  };\n"
         "};\n"
         "\n");
@@ -873,10 +871,14 @@ private:
           "  template <typename Impl>\n"
           "  class Base;\n"
           "\n"
+          "  template <typename Op, typename Impl = ::capnp::Void>\n"
+          "  ", noPipeline ? kj::str("using PipelineBase = ::capnp::altcxx::DummyPipelineBase<",
+                                     name, '>') :
+                             kj::str("class PipelineBase"), ";\n"
+          "\n"
           "  typedef ::capnp::altcxx::Reader<", name, "> Reader;\n"
           "  typedef ::capnp::altcxx::Builder<", name, "> Builder;\n"
-          "  ", noPipeline ? kj::strTree("typedef ::capnp::altcxx::DummyPipeline<", name, '>') :
-                             kj::strTree("class"), " Pipeline;\n"
+          "  typedef ::capnp::altcxx::Pipeline<", name, "> Pipeline;\n"
           "\n",
           structNode.getDiscriminantCount() == 0 ? kj::strTree() : kj::strTree(
               "  enum Which: uint16_t {\n",
@@ -1573,8 +1575,8 @@ private:
           "#ifndef CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n",
           "#define CAPNP_INCLUDED_", kj::hex(node.getId()), "_\n"
           "\n"
-          "#include <capnp/altc++/property", hasInterfaces ? "-rpc" : "", ".h>\n",
-          hasInterfaces ? kj::strTree("#include <capnp/capability.h>\n") : kj::strTree(),
+          "#include <capnp/altc++/generated-header-support.h>\n",
+          hasInterfaces ? kj::strTree("#include <capnp/altc++/property-rpc.h>\n") : kj::strTree(),
           "\n"
           "#if CAPNP_VERSION != ", CAPNP_VERSION, "\n"
           "#error \"Version mismatch between generated code and library headers.  You must "

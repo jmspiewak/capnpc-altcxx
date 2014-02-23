@@ -112,7 +112,7 @@ struct ZeroElement {
   }
 };
 
-struct NoOp {
+struct GiNoOp {
   static bool init(_::StructBuilder&) { return true; }
 };
 
@@ -147,25 +147,6 @@ template <typename Struct>
 struct MaybeMasked<Struct, 0, Void, 0> {
   static Void get(Struct&) { return VOID; }
   static void set(Struct&, Void) {}
-};
-
-// =======================================================================================
-// Pipeline operations.
-
-struct PipelineNoOp {
-  static AnyPointer::Pipeline get(AnyPointer::Pipeline& ptr) { return ptr.noop(); }
-};
-
-template <uint offset>
-struct PipelineGetPointerOp {
-  static AnyPointer::Pipeline get(AnyPointer::Pipeline& ptr) { return ptr.getPointerField(offset); }
-};
-
-template <uint offset>
-struct PipelineGetPointerAsCapOp {
-  static kj::Own<ClientHook> get(AnyPointer::Pipeline& ptr) {
-    return ptr.getPointerField(offset).asCap();
-  }
 };
 
 // =======================================================================================
@@ -487,25 +468,6 @@ struct AnyPointerProperty {
   AnyPointerProperty& operator = (Orphan<AnyPointer>&& val)  { adopt(kj::mv(val)); return *this; }
 
   operator typename Impl::template TypeFor<AnyPointer> () { return get(); }
-};
-
-// ---------------------------------------------------------------------------------------
-
-template <typename T, typename Operation = PipelineNoOp>
-struct PipelineProperty {
-  KJ_DISALLOW_COPY(PipelineProperty);
-
-  PipelineFor<T> get() {
-    return PipelineFor<T>(Operation::get(typeless()));
-  }
-
-  PipelineFor<T> operator * () { return get(); }
-  _::TemporaryPointer<PipelineFor<T>> operator -> () { return get(); }
-
-private:
-  typename AnyPointer::Pipeline& typeless() {
-    return *reinterpret_cast<AnyPointer::Pipeline*>(this);
-  }
 };
 
 #undef FORWARD_BINARY

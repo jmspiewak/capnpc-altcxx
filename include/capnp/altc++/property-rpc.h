@@ -25,32 +25,59 @@
 #define CAPNP_ALTCXX_PROPERTY_RPC_H_
 
 #include "property.h"
+#include "impl-pipeline.h"
 #include "impl-rpc.h"
 
 namespace capnp {
 namespace altcxx {
 
+class ExposeNewCall : public Capability::Client {
+public:
+  ExposeNewCall(kj::Own<ClientHook>&& hook) : Capability::Client(kj::mv(hook)) {}
+
+  template <typename Params, typename Results>
+  Request<Params, Results> newCall(uint64_t iId, uint16_t mId, kj::Maybe<MessageSize> hint) {
+    return Capability::Client::newCall<Params, Results>(iId, mId, hint);
+  }
+};
+
 template <uint offset, typename Union, typename Parent>
 struct ClientPointer {
-  class Client : public Capability::Client {
-  public:
-    Client(kj::Own<ClientHook>&& hook) : Capability::Client(kj::mv(hook)) {}
-
-    template <typename Params, typename Results>
-    Request<Params, Results> newCall(uint64_t iId, uint16_t mId, kj::Maybe<MessageSize> hint) {
-      return Capability::Client::newCall<Params, Results>(iId, mId, hint);
-    }
-  };
-
   template <typename = void>
   class ClientBase {
+  public:
+    template <typename T>
+    typename T::Client castAs() {
+      typename Parent::Helper::Struct s = Parent::transform(this);
+      Union::check(s);
+      return Capability::Client(s.getPointerField(offset).getCapability()).castAs<T>();
+    }
+
   protected:
     template <typename Params, typename Results>
     Request<Params, Results> newCall(uint64_t iId, uint16_t mId, kj::Maybe<MessageSize> hint) {
       typename Parent::Helper::Struct s = Parent::transform(this);
       Union::check(s);
       typename Parent::Helper::Pointer ptr = s.getPointerField(offset);
-      return Client(ptr.getCapability()).newCall<Params, Results>(iId, mId, hint);
+      return ExposeNewCall(ptr.getCapability()).newCall<Params, Results>(iId, mId, hint);
+    }
+  };
+};
+
+template <typename Op>
+struct ClientPipelinePointer {
+  template <typename = void>
+  class ClientBase {
+  public:
+    template <typename T>
+    typename T::Client castAs() {
+      return Capability::Client(Op::get(this)).castAs<T>();
+    }
+
+  protected:
+    template <typename Params, typename Results>
+    Request<Params, Results> newCall(uint64_t iId, uint16_t mId, kj::Maybe<MessageSize> hint) {
+      return ExposeNewCall(Op::get(this)).newCall<Params, Results>(iId, mId, hint);
     }
   };
 };
@@ -85,6 +112,11 @@ struct InterfaceProperty: PointerProperty<Impl, offset, T, NoDefault, Union>,
     return *this = typename T::Client(kj::mv(val));
   }
 };
+
+template <typename Op, typename T, uint offset>
+struct InterfacePipelineProperty : public PipelineProperty<AsCapOp<GetPointerOp<offset, Op>>, T>,
+    public T::template ClientBase<typename T::Extends::template Add<
+    ClientPipelinePointer<AsCapOp<GetPointerOp<offset, Op>>>>> {};
 
 } // namespace altcxx
 } // namespace capnp

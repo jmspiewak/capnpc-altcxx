@@ -109,11 +109,11 @@ TEST(Rpc, Pipelining) {
 
       auto promise = request.send();
 
-      auto pipelineRequest = promise.outBox->cap->fooRequest();
+      auto pipelineRequest = promise.outBox.cap.fooRequest();
       pipelineRequest.i = 321;
       auto pipelinePromise = pipelineRequest.send();
 
-      auto pipelineRequest2 = promise.outBox->cap->castAs<test::TestExtends>().graultRequest();
+      auto pipelineRequest2 = promise.outBox.cap.castAs<test::TestExtends>().graultRequest();
       auto pipelinePromise2 = pipelineRequest2.send();
 
       promise = nullptr;  // Just to be annoying, drop the original promise.
@@ -149,11 +149,11 @@ TEST(Rpc, Pipelining) {
 
       auto promise = request.send();
 
-      auto pipelineRequest = promise.outBox->cap->fooRequest();
+      auto pipelineRequest = promise.outBox.cap.fooRequest();
       pipelineRequest.i = 321;
       auto pipelinePromise = pipelineRequest.send();
 
-      auto pipelineRequest2 = promise.outBox->cap->castAs<test::TestExtends>().graultRequest();
+      auto pipelineRequest2 = promise.outBox.cap.castAs<test::TestExtends>().graultRequest();
       auto pipelinePromise2 = pipelineRequest2.send();
 
       EXPECT_ANY_THROW(pipelinePromise.wait(ioContext.waitScope));
